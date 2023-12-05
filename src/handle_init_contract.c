@@ -1,5 +1,5 @@
 #include "plugin.h"
-#include "utils.h"
+#include "check_tx_content.h"
 
 // Called once to init.
 void handle_init_contract(ethPluginInitContract_t *msg) {
@@ -7,6 +7,12 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
     if (msg->interfaceVersion != ETH_PLUGIN_INTERFACE_VERSION_LATEST) {
         // If not the case, return the `UNAVAILABLE` status.
         msg->result = ETH_PLUGIN_RESULT_UNAVAILABLE;
+        return;
+    }
+
+    if (!check_tx_content(msg->pluginSharedRO->txContent)) {
+        PRINTF("Error in check_tx_content\n");
+        msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
     }
 
@@ -41,12 +47,12 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
     // EDIT THIS: Adapt the `cases`, and set the `next_param` to be the first parameter you expect
     // to parse.
     switch (context->selectorIndex) {
-        case SWAP_EXACT_ETH_FOR_TOKENS:
-            context->next_param = MIN_AMOUNT_RECEIVED;
+        case EXECUTE:
+            context->next_param = COMMANDS_OFFSET;
             break;
-        case BOILERPLATE_DUMMY_2:
-            context->next_param = TOKEN_RECEIVED;
-            break;
+        // case BOILERPLATE_DUMMY_2:
+        //     context->next_param = TOKEN_RECEIVED;
+        //     break;
         // Keep this
         default:
             PRINTF("Missing selectorIndex: %d\n", context->selectorIndex);

@@ -24,21 +24,14 @@ include $(BOLOS_SDK)/Makefile.defines
 ########################################
 #        Mandatory configuration       #
 ########################################
-# EDIT THIS: Application name
 # Will be displayed on screen by the Ethereum app
-APPNAME = "PluginBoilerplate"
+APPNAME = "PluginUniswap"
 
 # Application version
 APPVERSION_M = 1
 APPVERSION_N = 0
 APPVERSION_P = 0
 APPVERSION = "$(APPVERSION_M).$(APPVERSION_N).$(APPVERSION_P)"
-
-# Initialize plugin SDK submodule if needed
-ifneq ($(shell git submodule status | grep '^[-+]'),)
-$(info INFO: Need to reinitialize git submodules)
-$(shell git submodule update --init)
-endif
 
 ifeq ($(ETHEREUM_PLUGIN_SDK),)
 ETHEREUM_PLUGIN_SDK=ethereum-plugin-sdk
@@ -66,6 +59,9 @@ endif
 # `CURVE_APP_LOAD_PARAMS = <curve1> <curve2>`
 CURVE_APP_LOAD_PARAMS = secp256k1
 
+DISABLE_DEBUG_THROW=1
+DISABLE_DEBUG_LEDGER_ASSERT=1
+
 # Application allowed derivation paths.
 # You should request a specific path for your app.
 # This serve as an isolation mechanism.
@@ -82,8 +78,7 @@ PATH_APP_LOAD_PARAMS = "44'/60'"   # purpose=coin(44) / coin_type=Testnet(1)
 #   * It must at least contains one value.
 #   * Values can be the app ticker or anything else but should be unique.
 VARIANT_PARAM = COIN
-# EDIT THIS: Plugin ticker name
-VARIANT_VALUES = pbol
+VARIANT_VALUES = plugin_uniswap
 
 # Enabling DEBUG flag will enable PRINTF and disable optimizations
 #DEBUG = 1
