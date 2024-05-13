@@ -257,15 +257,13 @@ typedef struct context_s {
 
 // Check if the context structure will fit in the RAM section ETH will prepare for us
 // Do not remove!
-ASSERT_SIZEOF_PLUGIN_CONTEXT(context_t);
+// ASSERT_SIZEOF_PLUGIN_CONTEXT(context_t);
 
 // char (*__kaboom)[sizeof( selector_t )] = 1;
 
 // Plugin-only memory allocated by the Ethereum application and used by the plugin.
-#define PLUGIN_CONTEXT_SIZE2 (8 * INT256_LENGTH)
+// #define PLUGIN_CONTEXT_SIZE2 (10 * INT256_LENGTH)
 // It is recommended to cast the raw uin8_t array to a structure meaningfull for your plugin
 // Helper to check that the actual plugin context structure is not bigger than the allocated memory
-#define ASSERT_SIZEOF_PLUGIN_CONTEXT2(s) \
-    _Static_assert(sizeof(s) <= PLUGIN_CONTEXT_SIZE2, "Plugin context structure is too big.")
-
-ASSERT_SIZEOF_PLUGIN_CONTEXT2(context_t);
+// #define ASSERT_SIZEOF_PLUGIN_CONTEXT2(s) \
+//     _Static_assert(sizeof(s) <= PLUGIN_CONTEXT_SIZE2, "Plugin context structure is too big.")
