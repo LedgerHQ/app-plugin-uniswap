@@ -45,10 +45,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     char name[NAME_LENGTH] = {0};
     char version[VERSION_LENGTH] = {0};
 
-    // data must be big enough to hold a selector
-    if (size < 4) {
+    // data must be big enough to hold a selector and the txcontent
+    if (size < 4 + sizeof(txContent_t)) {
         return 0;
     }
+    memcpy(&content, data + 4, sizeof(txContent_t));
 
     init_contract.interfaceVersion = ETH_PLUGIN_INTERFACE_VERSION_LATEST;
     init_contract.selector = data;
@@ -62,7 +63,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         return 0;
     }
 
-    size_t i = 4;
+    size_t i = 4 + sizeof(txContent_t);
     // potentially save space for token lookups
     while (size - i >= 32 + sizeof(extraInfo_t) * 2) {
         provide_param.parameter = data + i;
