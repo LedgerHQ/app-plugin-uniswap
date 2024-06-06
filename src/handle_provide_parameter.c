@@ -606,6 +606,21 @@ static int handle_recipient(const uint8_t parameter[PARAMETER_LENGTH], context_t
     return 0;
 }
 
+// Size of the network fees element in a V3 path
+#define NETWORK_FEE_LENGTH 3
+
+static bool v3_path_length_is_valid(uint8_t path_length) {
+    if (path_length < 2 * ADDRESS_LENGTH + NETWORK_FEE_LENGTH) {
+        PRINTF("Path length %d is too small to make sense\n", path_length);
+        return false;
+    } else if ((path_length - ADDRESS_LENGTH) % (ADDRESS_LENGTH + NETWORK_FEE_LENGTH) != 0) {
+        PRINTF("Path length %d is not address + fees sized\n", path_length);
+        return false;
+    } else {
+        return true;
+    }
+}
+
 static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context) {
     // debug
     print_parameter_name(context->next_param);
@@ -795,6 +810,10 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH:
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (context->path_length < 2) {
+                PRINTF("Path length is too small to make sense %d\n", context->path_length);
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             context->current_path_read = 0;
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PATH;
             break;
@@ -849,6 +868,10 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH:
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (context->path_length < 2) {
+                PRINTF("Path length is too small to make sense %d\n", context->path_length);
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             context->current_path_read = 0;
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PATH;
             break;
@@ -903,6 +926,10 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH:
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (!v3_path_length_is_valid(context->path_length)) {
+                PRINTF("Path length is invalid\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             context->current_path_read = 0;
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PATH;
             break;
@@ -956,6 +983,10 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH:
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (!v3_path_length_is_valid(context->path_length)) {
+                PRINTF("Path length is invalid\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             context->current_path_read = 0;
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PATH;
             break;
