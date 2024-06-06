@@ -4,26 +4,12 @@
 
 static bool inferior_or_equal(const uint8_t a[PARAMETER_LENGTH],
                               const uint8_t b[PARAMETER_LENGTH]) {
-    for (uint8_t i = 0; i < PARAMETER_LENGTH; ++i) {
-        if (a[i] > b[i]) {
-            return false;
-        } else if (a[i] < b[i]) {
-            return true;
-        }
-    }
-    return true;
+    return (memcmp(a, b, PARAMETER_LENGTH) <= 0);
 }
 
 static bool superior_or_equal(const uint8_t a[PARAMETER_LENGTH],
                               const uint8_t b[PARAMETER_LENGTH]) {
-    for (uint8_t i = 0; i < PARAMETER_LENGTH; ++i) {
-        if (a[i] < b[i]) {
-            return false;
-        } else if (a[i] > b[i]) {
-            return true;
-        }
-    }
-    return true;
+    return (memcmp(a, b, PARAMETER_LENGTH) >= 0);
 }
 
 static bool equal(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_LENGTH]) {
