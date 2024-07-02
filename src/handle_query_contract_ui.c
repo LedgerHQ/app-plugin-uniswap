@@ -90,6 +90,39 @@ static bool amount_out(ethQueryContractUI_t *msg, const context_t *context) {
     return format_amount(msg->msg, msg->msgLength, &context->output);
 }
 
+static bool pay_portion(ethQueryContractUI_t *msg, const context_t *context) {
+    strlcpy(msg->title, "Interface fee", msg->titleLength);
+
+    // We can't use snprintf here because plugins are compiled without
+    // Resort to doing manual computation
+
+    // We receive an amount in 'basis points' unit: 1 basis point == 0.01 percent
+    // First calculate the integer and fractional parts
+    uint64_t integer_part = context->pay_portion_amount / 100;
+    uint64_t fractional_part = context->pay_portion_amount % 100;
+
+    // Longest string is 100.00%
+    char integer_string[4];
+    u64_to_string(integer_part, integer_string, sizeof(integer_string));
+    char fractionnal_string[3];
+    u64_to_string(fractional_part, fractionnal_string, sizeof(fractionnal_string));
+
+    // Concatenate the elements
+    strlcat(msg->msg, integer_string, msg->msgLength);
+    strlcat(msg->msg, ".", msg->msgLength);
+    if (fractional_part == 0) {
+        strlcat(msg->msg, "00", msg->msgLength);
+    } else if (strlen(fractionnal_string) < 2) {
+        strlcat(msg->msg, "0", msg->msgLength);
+        strlcat(msg->msg, fractionnal_string, msg->msgLength);
+    } else {
+        strlcat(msg->msg, fractionnal_string, msg->msgLength);
+    }
+    strlcat(msg->msg, "%", msg->msgLength);
+
+    return true;
+}
+
 static bool recipient_screen(ethQueryContractUI_t *msg, const context_t *context) {
     strlcpy(msg->title, "Swap Recipient:", msg->titleLength);
     return format_address(msg->msg, msg->msgLength, context->recipient);
@@ -100,55 +133,53 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
     bool ret = false;
     memset(msg->title, 0, msg->titleLength);
     memset(msg->msg, 0, msg->msgLength);
+    uint8_t index = msg->screenIndex;
 
     bool has_recipient_screen = !is_sender_address(context->recipient);
 
-    if ((context->input.asset_type == UNKNOWN_TOKEN) ||
-        (context->output.asset_type == UNKNOWN_TOKEN)) {
-        switch (msg->screenIndex) {
-            case 0:
-                ret = warning(msg, context);
-                break;
-            case 1:
-                ret = asset_in(msg, &context->input);
-                break;
-            case 2:
-                ret = asset_out(msg, &context->output);
-                break;
-            case 3:
-                ret = amount_in(msg, context);
-                break;
-            case 4:
-                ret = amount_out(msg, context);
-                break;
-            case 5:
-                if (has_recipient_screen) {
-                    ret = recipient_screen(msg, context);
-                    break;
-                }
-                __attribute__((fallthrough));
-
-            default:
-                PRINTF("Received an invalid screenIndex\n");
-        }
-    } else {
-        switch (msg->screenIndex) {
-            case 0:
-                ret = amount_in(msg, context);
-                break;
-            case 1:
-                ret = amount_out(msg, context);
-                break;
-            case 2:
-                if (has_recipient_screen) {
-                    ret = recipient_screen(msg, context);
-                    break;
-                }
-                __attribute__((fallthrough));
-
-            default:
-                PRINTF("Received an invalid screenIndex\n");
-        }
+    if (context->input.asset_type != UNKNOWN_TOKEN && context->output.asset_type != UNKNOWN_TOKEN) {
+        // Skip warning + independent asset display
+        index += 3;
     }
+
+    switch (index) {
+        case 0:
+            ret = warning(msg, context);
+            break;
+        case 1:
+            ret = asset_in(msg, &context->input);
+            break;
+        case 2:
+            ret = asset_out(msg, &context->output);
+            break;
+        case 3:
+            ret = amount_in(msg, context);
+            break;
+        case 4:
+            ret = amount_out(msg, context);
+            break;
+        case 5:
+            // Recipient screen is 5th if applicable, else pay portion if applicable
+            if (has_recipient_screen) {
+                ret = recipient_screen(msg, context);
+            } else if (context->pay_portion_amount != 0) {
+                ret = pay_portion(msg, context);
+            } else {
+                PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+            }
+            break;
+        case 6:
+            // pay portion is 6th if applicable and recipient screen was 5th
+            if (has_recipient_screen && context->pay_portion_amount != 0) {
+                ret = pay_portion(msg, context);
+            } else {
+                PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+            }
+            break;
+
+        default:
+            PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+    }
+
     msg->result = ret ? ETH_PLUGIN_RESULT_OK : ETH_PLUGIN_RESULT_ERROR;
 }

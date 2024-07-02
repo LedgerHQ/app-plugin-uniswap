@@ -116,6 +116,16 @@ def craft_UNWRAP_WETH(amount: int, recipient: str = "000000000000000000000000000
                                         ]
     ))
 
+def craft_PAY_PORTION(token: str, recipient: str, amount: int) -> UniswapCommand:
+    return UniswapCommand(command_byte=bytes.fromhex("06"),
+                          input=encode(['address', 'address', 'uint256'],
+                                        [
+                                            token,
+                                            recipient,
+                                            amount,
+                                        ]
+    ))
+
 def craft_uniswap_tx(commands: List[UniswapCommand], uniswap_contract_data) -> bytes:
     commands_bytes = b''
     inputs = []

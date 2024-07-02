@@ -112,6 +112,10 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 PRINTF("Preparing to read UNWRAP_WETH\n");
                 context->next_param = INPUT_UNWRAP_WETH_LENGTH;
                 break;
+            case PAY_PORTION:
+                PRINTF("Preparing to read PAY_PORTION\n");
+                context->next_param = INPUT_PAY_PORTION_LENGTH;
+                break;
             default:
                 PRINTF("Error: command %d not handled\n", current_command);
                 return -1;
@@ -727,11 +731,47 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
             break;
 
+            // ###################
+            // Parsing PAY_PORTION
+            // ###################
+
+        case INPUT_PAY_PORTION_LENGTH:
+            context->next_param = INPUT_PAY_PORTION_TOKEN;
+            break;
+        case INPUT_PAY_PORTION_TOKEN:
+            context->next_param = INPUT_PAY_PORTION_RECIPIENT;
+            break;
+        case INPUT_PAY_PORTION_RECIPIENT:
+            context->next_param = INPUT_PAY_PORTION_AMOUNT;
+            break;
+        case INPUT_PAY_PORTION_AMOUNT: {
+            uint16_t new;
+            if (!U2BE_from_parameter(msg->parameter, &new)) {
+                PRINTF("Error: Not a valid basis point amount\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            } else {
+                uint32_t pay_portion_sum = context->pay_portion_amount + new;
+                PRINTF("pay_portion_sum %d\n", pay_portion_sum);
+                if (pay_portion_sum > 10000) {
+                    PRINTF("Error: Not a valid basis point amount\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                } else {
+                    context->pay_portion_amount = pay_portion_sum;
+                    ++context->current_command;
+                    if (prepare_reading_next_input(context) != 0) {
+                        msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    }
+                }
+            }
+        } break;
+
             // ######################
             // Parsing PERMIT2_PERMIT
             // ######################
 
         case INPUT_PERMIT2_PERMIT_LENGTH:
+            msg->result = ETH_PLUGIN_RESULT_ERROR;
+            // No Permit2 handling for now
             context->next_param = INPUT_PERMIT2_PERMIT_TOKEN;
             break;
         case INPUT_PERMIT2_PERMIT_TOKEN:

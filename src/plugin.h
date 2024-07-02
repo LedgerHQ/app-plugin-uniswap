@@ -63,6 +63,12 @@ typedef enum parameter_e {
     INPUT_UNWRAP_WETH_RECIPIENT,
     INPUT_UNWRAP_WETH_AMOUNT,
 
+    // Parsing UNWRAP_WETH
+    INPUT_PAY_PORTION_LENGTH,
+    INPUT_PAY_PORTION_TOKEN,
+    INPUT_PAY_PORTION_RECIPIENT,
+    INPUT_PAY_PORTION_AMOUNT,
+
     // Parsing PERMIT2_PERMIT
     INPUT_PERMIT2_PERMIT_LENGTH,
     INPUT_PERMIT2_PERMIT_TOKEN,
@@ -245,6 +251,8 @@ typedef struct context_s {
     io_data_t output;
 
     bool sweep_received;
+
+    uint16_t pay_portion_amount;
 
     bool recipient_set;
     uint8_t recipient[ADDRESS_LENGTH];

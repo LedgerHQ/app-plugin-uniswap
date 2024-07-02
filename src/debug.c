@@ -42,6 +42,18 @@ void print_parameter_name(parameter_t parameter) {
         case INPUT_UNWRAP_WETH_AMOUNT:
             PRINTF("INPUT_UNWRAP_WETH_AMOUNT\n");
             break;
+        case INPUT_PAY_PORTION_LENGTH:
+            PRINTF("INPUT_PAY_PORTION_LENGTH\n");
+            break;
+        case INPUT_PAY_PORTION_TOKEN:
+            PRINTF("INPUT_PAY_PORTION_TOKEN\n");
+            break;
+        case INPUT_PAY_PORTION_RECIPIENT:
+            PRINTF("INPUT_PAY_PORTION_RECIPIENT\n");
+            break;
+        case INPUT_PAY_PORTION_AMOUNT:
+            PRINTF("INPUT_PAY_PORTION_AMOUNT\n");
+            break;
         case INPUT_PERMIT2_PERMIT_LENGTH:
             PRINTF("INPUT_PERMIT2_PERMIT_LENGTH\n");
             break;
