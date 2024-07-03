@@ -126,6 +126,24 @@ def craft_PAY_PORTION(token: str, recipient: str, amount: int) -> UniswapCommand
                                         ]
     ))
 
+def craft_fake(command_byte) -> UniswapCommand:
+    # Not a real PERMIT2_PERMIT, we just want some data to skip
+    content=b'000000000000000000000000000000000000000212345678901234567890123456789012345678901234567890123456789098765432123456789098765432123456789098765430'
+    return UniswapCommand(command_byte=bytes.fromhex(command_byte),
+                          input=encode(['bytes'],
+                                        [
+                                            content
+                                        ]
+    ))
+def craft_fake_PERMIT2_TRANSFER_FROM() -> UniswapCommand:
+    return craft_fake("02")
+def craft_fake_PERMIT2_PERMIT_BATCH() -> UniswapCommand:
+    return craft_fake("03")
+def craft_fake_PERMIT2_PERMIT() -> UniswapCommand:
+    return craft_fake("0a")
+def craft_fake_PERMIT2_TRANSFER_FROM_BATCH() -> UniswapCommand:
+    return craft_fake("0d")
+
 def craft_uniswap_tx(commands: List[UniswapCommand], uniswap_contract_data) -> bytes:
     commands_bytes = b''
     inputs = []
