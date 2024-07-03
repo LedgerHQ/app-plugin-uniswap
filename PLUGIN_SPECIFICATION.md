@@ -31,6 +31,11 @@ https://docs.uniswap.org/contracts/universal-router/technical-reference#command-
 | V3_SWAP_EXACT_OUT |
 | WRAP_ETH |
 | UNWRAP_ETH |
+| PERMIT2_TRANSFER_FROM |
+| PERMIT2_PERMIT_BATCH |
+| PERMIT2_TRANSFER_FROM_BATCH |
+| PERMIT2_PERMIT |
+| PAY_PORTION |
 
 ## Limitation
 
