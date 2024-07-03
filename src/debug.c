@@ -1,3 +1,5 @@
+#ifdef DEBUG
+
 #include "plugin.h"
 #include "debug.h"
 
@@ -164,3 +166,5 @@ void print_parameter_name(parameter_t parameter) {
             break;
     }
 }
+
+#endif

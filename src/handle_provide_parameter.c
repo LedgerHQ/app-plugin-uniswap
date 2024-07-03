@@ -629,8 +629,9 @@ static bool v3_path_length_is_valid(uint8_t path_length) {
 }
 
 static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context) {
-    // debug
+#ifdef DEBUG
     print_parameter_name(context->next_param);
+#endif
 
     switch (context->next_param) {
             // ######################
