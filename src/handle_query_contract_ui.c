@@ -91,7 +91,7 @@ static bool amount_out(ethQueryContractUI_t *msg, const context_t *context) {
 }
 
 static bool pay_portion(ethQueryContractUI_t *msg, const context_t *context) {
-    strlcpy(msg->title, "Interface fee", msg->titleLength);
+    strlcpy(msg->title, "Protocol fee", msg->titleLength);
 
     // We can't use snprintf here because plugins are compiled without
     // Resort to doing manual computation
