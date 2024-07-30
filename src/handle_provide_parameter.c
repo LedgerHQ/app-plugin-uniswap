@@ -100,9 +100,12 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 PRINTF("Preparing to read V3_SWAP_EXACT_OUT\n");
                 context->next_param = INPUT_V3_SWAP_EXACT_OUT_LENGTH;
                 break;
+            case PERMIT2_TRANSFER_FROM:
+            case PERMIT2_PERMIT_BATCH:
+            case PERMIT2_TRANSFER_FROM_BATCH:
             case PERMIT2_PERMIT:
-                PRINTF("Preparing to read PERMIT2_PERMIT\n");
-                context->next_param = INPUT_PERMIT2_PERMIT_LENGTH;
+                PRINTF("Preparing to read PERMIT2_X related command\n");
+                context->next_param = INPUT_PERMIT2_LENGTH;
                 break;
             case WRAP_ETH:
                 PRINTF("Preparing to read WRAP_ETH\n");
@@ -111,6 +114,10 @@ static uint8_t prepare_reading_next_input(context_t *context) {
             case UNWRAP_WETH:
                 PRINTF("Preparing to read UNWRAP_WETH\n");
                 context->next_param = INPUT_UNWRAP_WETH_LENGTH;
+                break;
+            case PAY_PORTION:
+                PRINTF("Preparing to read PAY_PORTION\n");
+                context->next_param = INPUT_PAY_PORTION_LENGTH;
                 break;
             default:
                 PRINTF("Error: command %d not handled\n", current_command);
@@ -622,8 +629,9 @@ static bool v3_path_length_is_valid(uint8_t path_length) {
 }
 
 static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context) {
-    // debug
+#ifdef DEBUG
     print_parameter_name(context->next_param);
+#endif
 
     switch (context->next_param) {
             // ######################
@@ -727,49 +735,52 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
             break;
 
+            // ###################
+            // Parsing PAY_PORTION
+            // ###################
+
+        case INPUT_PAY_PORTION_LENGTH:
+            context->next_param = INPUT_PAY_PORTION_TOKEN;
+            break;
+        case INPUT_PAY_PORTION_TOKEN:
+            context->next_param = INPUT_PAY_PORTION_RECIPIENT;
+            break;
+        case INPUT_PAY_PORTION_RECIPIENT:
+            context->next_param = INPUT_PAY_PORTION_AMOUNT;
+            break;
+        case INPUT_PAY_PORTION_AMOUNT: {
+            uint16_t new;
+            if (!U2BE_from_parameter(msg->parameter, &new)) {
+                PRINTF("Error: Not a valid basis point amount\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            } else {
+                uint32_t pay_portion_sum = context->pay_portion_amount + new;
+                PRINTF("pay_portion_sum %d\n", pay_portion_sum);
+                if (pay_portion_sum > 10000) {
+                    PRINTF("Error: Not a valid basis point amount\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                } else {
+                    context->pay_portion_amount = pay_portion_sum;
+                    ++context->current_command;
+                    if (prepare_reading_next_input(context) != 0) {
+                        msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    }
+                }
+            }
+        } break;
+
             // ######################
-            // Parsing PERMIT2_PERMIT
+            // Parsing PERMIT2_X
             // ######################
 
-        case INPUT_PERMIT2_PERMIT_LENGTH:
-            context->next_param = INPUT_PERMIT2_PERMIT_TOKEN;
+        case INPUT_PERMIT2_LENGTH:
+            context->permit2_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            context->current_permit_read = 0;
+            context->next_param = INPUT_PERMIT2_SKIP_TOKEN;
             break;
-        case INPUT_PERMIT2_PERMIT_TOKEN:
-            PRINTF("Receiving permit2 token\n");
-            uint8_t address[ADDRESS_LENGTH];
-            memmove(address, msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
-            if (set_token(address, &context->input) != 0) {
-                PRINTF("Error in set_token for input for permit2\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
-            context->next_param = INPUT_PERMIT2_PERMIT_AMOUNT;
-            break;
-        case INPUT_PERMIT2_PERMIT_AMOUNT:
-            context->next_param = INPUT_PERMIT2_PERMIT_EXPIRATION;
-            break;
-        case INPUT_PERMIT2_PERMIT_EXPIRATION:
-            context->next_param = INPUT_PERMIT2_PERMIT_NONCE;
-            break;
-        case INPUT_PERMIT2_PERMIT_NONCE:
-            context->next_param = INPUT_PERMIT2_PERMIT_SPENDER;
-            break;
-        case INPUT_PERMIT2_PERMIT_SPENDER:
-            context->next_param = INPUT_PERMIT2_PERMIT_SIG_DEADLINE;
-            break;
-        case INPUT_PERMIT2_PERMIT_SIG_DEADLINE:
-            context->next_param = INPUT_PERMIT2_PERMIT_SIGNATURE_OFFSET;
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE_OFFSET:
-            context->next_param = INPUT_PERMIT2_PERMIT_SIGNATURE_LENGTH;
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE_LENGTH:
-            context->permit2_signature_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
-            context->current_permit_signature_read = 0;
-            context->next_param = INPUT_PERMIT2_PERMIT_SIGNATURE;
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE:
-            context->current_permit_signature_read += PARAMETER_LENGTH;
-            if (context->current_permit_signature_read >= context->permit2_signature_length) {
+        case INPUT_PERMIT2_SKIP_TOKEN:
+            context->current_permit_read += PARAMETER_LENGTH;
+            if (context->current_permit_read >= context->permit2_length) {
                 ++context->current_command;
                 if (prepare_reading_next_input(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;

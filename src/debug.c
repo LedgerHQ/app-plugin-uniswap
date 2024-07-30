@@ -1,3 +1,5 @@
+#ifdef DEBUG
+
 #include "plugin.h"
 #include "debug.h"
 
@@ -42,35 +44,23 @@ void print_parameter_name(parameter_t parameter) {
         case INPUT_UNWRAP_WETH_AMOUNT:
             PRINTF("INPUT_UNWRAP_WETH_AMOUNT\n");
             break;
-        case INPUT_PERMIT2_PERMIT_LENGTH:
-            PRINTF("INPUT_PERMIT2_PERMIT_LENGTH\n");
+        case INPUT_PAY_PORTION_LENGTH:
+            PRINTF("INPUT_PAY_PORTION_LENGTH\n");
             break;
-        case INPUT_PERMIT2_PERMIT_TOKEN:
-            PRINTF("INPUT_PERMIT2_PERMIT_TOKEN\n");
+        case INPUT_PAY_PORTION_TOKEN:
+            PRINTF("INPUT_PAY_PORTION_TOKEN\n");
             break;
-        case INPUT_PERMIT2_PERMIT_AMOUNT:
-            PRINTF("INPUT_PERMIT2_PERMIT_AMOUNT\n");
+        case INPUT_PAY_PORTION_RECIPIENT:
+            PRINTF("INPUT_PAY_PORTION_RECIPIENT\n");
             break;
-        case INPUT_PERMIT2_PERMIT_EXPIRATION:
-            PRINTF("INPUT_PERMIT2_PERMIT_EXPIRATION\n");
+        case INPUT_PAY_PORTION_AMOUNT:
+            PRINTF("INPUT_PAY_PORTION_AMOUNT\n");
             break;
-        case INPUT_PERMIT2_PERMIT_NONCE:
-            PRINTF("INPUT_PERMIT2_PERMIT_NONCE\n");
+        case INPUT_PERMIT2_LENGTH:
+            PRINTF("INPUT_PERMIT2_LENGTH\n");
             break;
-        case INPUT_PERMIT2_PERMIT_SPENDER:
-            PRINTF("INPUT_PERMIT2_PERMIT_SPENDER\n");
-            break;
-        case INPUT_PERMIT2_PERMIT_SIG_DEADLINE:
-            PRINTF("INPUT_PERMIT2_PERMIT_SIG_DEADLINE\n");
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE_OFFSET:
-            PRINTF("INPUT_PERMIT2_PERMIT_SIGNATURE_OFFSET\n");
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE_LENGTH:
-            PRINTF("INPUT_PERMIT2_PERMIT_SIGNATURE_LENGTH\n");
-            break;
-        case INPUT_PERMIT2_PERMIT_SIGNATURE:
-            PRINTF("INPUT_PERMIT2_PERMIT_SIGNATURE\n");
+        case INPUT_PERMIT2_SKIP_TOKEN:
+            PRINTF("INPUT_PERMIT2_SKIP_TOKEN\n");
             break;
         case INPUT_V2_SWAP_EXACT_IN_LENGTH:
             PRINTF("INPUT_V2_SWAP_EXACT_IN_LENGTH\n");
@@ -176,3 +166,5 @@ void print_parameter_name(parameter_t parameter) {
             break;
     }
 }
+
+#endif

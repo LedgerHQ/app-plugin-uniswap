@@ -63,17 +63,15 @@ typedef enum parameter_e {
     INPUT_UNWRAP_WETH_RECIPIENT,
     INPUT_UNWRAP_WETH_AMOUNT,
 
+    // Parsing UNWRAP_WETH
+    INPUT_PAY_PORTION_LENGTH,
+    INPUT_PAY_PORTION_TOKEN,
+    INPUT_PAY_PORTION_RECIPIENT,
+    INPUT_PAY_PORTION_AMOUNT,
+
     // Parsing PERMIT2_PERMIT
-    INPUT_PERMIT2_PERMIT_LENGTH,
-    INPUT_PERMIT2_PERMIT_TOKEN,
-    INPUT_PERMIT2_PERMIT_AMOUNT,
-    INPUT_PERMIT2_PERMIT_EXPIRATION,
-    INPUT_PERMIT2_PERMIT_NONCE,
-    INPUT_PERMIT2_PERMIT_SPENDER,
-    INPUT_PERMIT2_PERMIT_SIG_DEADLINE,
-    INPUT_PERMIT2_PERMIT_SIGNATURE_OFFSET,
-    INPUT_PERMIT2_PERMIT_SIGNATURE_LENGTH,
-    INPUT_PERMIT2_PERMIT_SIGNATURE,
+    INPUT_PERMIT2_LENGTH,
+    INPUT_PERMIT2_SKIP_TOKEN,
 
     // Parsing V2_SWAP_EXACT_IN
     INPUT_V2_SWAP_EXACT_IN_LENGTH,
@@ -224,8 +222,8 @@ typedef struct context_s {
     // As we can't be reading both at the same time and this data is useless once the parsing is
     // done, we can safely unionize the lengths
     union {
-        // Used to skip the permit2 signature
-        uint8_t permit2_signature_length;
+        // Used to skip the permit2
+        uint8_t permit2_length;
         // Used to know the size of a swap path
         uint8_t path_length;
     };
@@ -234,7 +232,7 @@ typedef struct context_s {
     // As we can't be reading both at the same time and this data is useless once the parsing is
     // done, we can safely unionize the offsets
     union {
-        uint8_t current_permit_signature_read;
+        uint8_t current_permit_read;
         uint8_t current_path_read;
         uint8_t current_input_offset_read;
     };
@@ -245,6 +243,8 @@ typedef struct context_s {
     io_data_t output;
 
     bool sweep_received;
+
+    uint16_t pay_portion_amount;
 
     bool recipient_set;
     uint8_t recipient[ADDRESS_LENGTH];

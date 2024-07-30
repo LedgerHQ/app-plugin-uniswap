@@ -1,3 +1,4 @@
+#ifdef DEBUG
 /*******************************************************************************
  *   Plugin Boilerplate
  *   (c) 2023 Ledger
@@ -20,3 +21,5 @@
 #include "plugin.h"
 
 void print_parameter_name(parameter_t parameter);
+
+#endif

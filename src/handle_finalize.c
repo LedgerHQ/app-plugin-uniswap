@@ -184,6 +184,11 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         ++msg->numScreens;
     }
 
+    if (context->pay_portion_amount != 0) {
+        PRINTF("Displaying pay portion\n");
+        ++msg->numScreens;
+    }
+
     // Resolve IOs if possible, request otherwise
     if (!resolve_asset(&context->input)) {
         msg->tokenLookup1 = context->input.u.address;
