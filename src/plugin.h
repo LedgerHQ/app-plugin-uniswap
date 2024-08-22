@@ -223,18 +223,18 @@ typedef struct context_s {
     // done, we can safely unionize the lengths
     union {
         // Used to skip the permit2
-        uint8_t permit2_length;
+        uint16_t permit2_length;
         // Used to know the size of a swap path
-        uint8_t path_length;
+        uint16_t path_length;
     };
 
     // We need to save some offsets for parsing purposes
     // As we can't be reading both at the same time and this data is useless once the parsing is
     // done, we can safely unionize the offsets
     union {
-        uint8_t current_permit_read;
-        uint8_t current_path_read;
-        uint8_t current_input_offset_read;
+        uint16_t current_permit_read;
+        uint16_t current_path_read;
+        uint16_t current_input_offset_read;
     };
 
     // The data for the input of the swap
