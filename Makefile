@@ -15,12 +15,12 @@
 #   limitations under the License.
 # ****************************************************************************
 
-# EDIT THIS: Application name
-APPNAME = "PluginBoilerplate"
+# Will be displayed on screen by the Ethereum app
+APPNAME = "Uniswap"
 
 # Application version
 APPVERSION_M = 1
-APPVERSION_N = 0
+APPVERSION_N = 2
 APPVERSION_P = 0
 
 include ethereum-plugin-sdk/standard_plugin.mk

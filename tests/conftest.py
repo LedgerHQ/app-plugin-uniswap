@@ -1,5 +1,4 @@
 import pytest
-
 from ragger.conftest import configuration
 from .utils import WalletAddr
 
@@ -26,3 +25,18 @@ pytest_plugins = ("ragger.conftest.base_conftest", )
 @pytest.fixture
 def wallet_addr(backend):
     return WalletAddr(backend)
+
+from .abi_reader import read_uniswap_contract_data
+@pytest.fixture(scope="session")
+def uniswap_contract_data():
+    return read_uniswap_contract_data()
+
+from .uniswap_client import UniswapClient
+@pytest.fixture(scope="class")
+def uniswap_client(backend, uniswap_contract_data):
+    return UniswapClient(backend, uniswap_contract_data)
+
+from .navigation_helper import NavigationHelper
+@pytest.fixture(scope="function")
+def navigation_helper(navigator, firmware, test_name):
+    return NavigationHelper(navigator, firmware, test_name)
