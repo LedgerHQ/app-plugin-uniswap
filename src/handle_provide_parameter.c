@@ -173,53 +173,6 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
     return 0;
 }
 
-// // Set the type of input or output token. Handle it the same way thanks to the io_data_t
-// structure. static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
-//     if (token_is_weth(address)) {
-//         PRINTF("Token to set is WETH\n");
-//         if (io_data->asset_type == UNSET) {
-//             PRINTF("Saving as first\n");
-//             io_data->asset_type = WETH;
-//         } else {
-//             PRINTF("Already received something, check\n");
-//             if (io_data->asset_type == UNKNOWN_TOKEN) {
-//                 PRINTF("Error: input is WETH, previous input is not\n");
-//                 return -1;
-//             }
-//         }
-//     } else {
-//         // Unknown Token
-//         PRINTF("Token to set is unknown\n");
-//         if (io_data->asset_type == UNSET) {
-//             PRINTF("Saving as first\n");
-//             io_data->asset_type = UNKNOWN_TOKEN;
-//             memmove(io_data->u.address, address, ADDRESS_LENGTH);
-//             PRINTF("io_data->u.address = 0x");
-//             for (int i = 0; i < ADDRESS_LENGTH; ++i) {
-//                 PRINTF("%02x", io_data->u.address[i]);
-//             }
-//             PRINTF("\n");
-//         } else {
-//             const uint8_t (*ref)[ADDRESS_LENGTH];
-//             if (io_data->asset_type == WETH || io_data->asset_type == ETH) {
-//                 ref = &weth_address;
-//                 PRINTF("Comparing with WETH\n");
-//             } else {
-//                 ref = &io_data->u.address;
-//                 PRINTF("Comparing with saved output token\n");
-//             }
-//             PRINTF("Trying to match : %.*H\n", ADDRESS_LENGTH, address);
-//             PRINTF("with ref : %.*H\n", ADDRESS_LENGTH, *ref);
-//             if (memcmp(*ref, address, ADDRESS_LENGTH) != 0) {
-//                 PRINTF("Error: Output token mismatch\n");
-//                 return -1;
-//             }
-//         }
-//     }
-
-//     return 0;
-// }
-
 // Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
 static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
     PRINTF("Setting token\n");
@@ -423,10 +376,6 @@ static int parse_v3_path(context_t *context,
         memmove(address, parameter, ADDRESS_LENGTH);
         context->current_path_read += ADDRESS_LENGTH;
         current_read_this_cycle += ADDRESS_LENGTH;
-        // if (set_token(address, first_token_to_read) != 0) {
-        //     PRINTF("Error in set_token for first for swap V3\n");
-        //     return -1;
-        // }
         if (handle_address_reception(address,
                                      first_token_to_read,
                                      last_token_to_read,

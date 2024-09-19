@@ -59,10 +59,6 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
         case EXECUTE:
             context->next_param = COMMANDS_OFFSET;
             break;
-        // case BOILERPLATE_DUMMY_2:
-        //     context->next_param = TOKEN_RECEIVED;
-        //     break;
-        // Keep this
         default:
             PRINTF("Missing selectorIndex: %d\n", context->selectorIndex);
             msg->result = ETH_PLUGIN_RESULT_ERROR;
