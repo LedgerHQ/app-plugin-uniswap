@@ -180,7 +180,7 @@ static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) 
         PRINTF("Token to set is WETH\n");
         io_data->asset_type = WETH;
     } else {
-        PRINTF("Token to set is unknown\n");
+        PRINTF("Token to set is unknown %.*H\n", ADDRESS_LENGTH, address);
         io_data->asset_type = UNKNOWN_TOKEN;
         memmove(io_data->u.address, address, ADDRESS_LENGTH);
     }
@@ -578,15 +578,19 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ######################
 
         case COMMANDS_OFFSET:
+            PRINTF("Interpreting as COMMANDS_OFFSET\n");
             context->next_param = INPUTS_HEADER_OFFSET;
             break;
         case INPUTS_HEADER_OFFSET:
+            PRINTF("Interpreting as INPUTS_HEADER_OFFSET\n");
             context->next_param = DEADLINE;
             break;
         case DEADLINE:
+            PRINTF("Interpreting as DEADLINE\n");
             context->next_param = COMMANDS_LENGTH;
             break;
         case COMMANDS_LENGTH:
+            PRINTF("Interpreting as COMMANDS_LENGTH\n");
             context->commands_number = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (context->commands_number > sizeof(context->commands)) {
                 PRINTF("Error: too many commands\n");
@@ -595,6 +599,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = COMMANDS;
             break;
         case COMMANDS:
+            PRINTF("Interpreting as COMMANDS\n");
             memmove(context->commands, msg->parameter, context->commands_number);
             for (int i = 0; i < context->commands_number; ++i) {
                 PRINTF("Command n %d: %02x\n", i, context->commands[i]);
@@ -602,6 +607,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUTS_NUMBER;
             break;
         case INPUTS_NUMBER: {
+            PRINTF("Interpreting as INPUTS_NUMBER\n");
             uint8_t inputs_number = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (context->commands_number != inputs_number) {
                 PRINTF("Error: context->commands_number != context->inputs_number\n");
@@ -612,6 +618,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
         } break;
         case INPUTS_OFFSET:
+            PRINTF("Interpreting as INPUTS_OFFSET\n");
             ++context->current_input_offset_read;
             if (context->current_input_offset_read == context->commands_number) {
                 context->current_command = 0;
@@ -626,9 +633,11 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ################
 
         case INPUT_WRAP_ETH_LENGTH:
+            PRINTF("Interpreting as INPUT_WRAP_ETH_LENGTH\n");
             context->next_param = INPUT_WRAP_ETH_RECIPIENT;
             break;
         case INPUT_WRAP_ETH_RECIPIENT:
+            PRINTF("Interpreting as INPUT_WRAP_ETH_RECIPIENT\n");
             PRINTF("Checking WRAP recipient\n");
             if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
                 if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
@@ -643,6 +652,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_WRAP_ETH_AMOUNT;
             break;
         case INPUT_WRAP_ETH_AMOUNT:
+            PRINTF("Interpreting as INPUT_WRAP_ETH_AMOUNT\n");
             if (add_wrap_or_unwrap(msg->parameter, context, INPUT) != 0) {
                 PRINTF("Error in add_wrap_or_unwrap for input\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -659,9 +669,11 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ###################
 
         case INPUT_UNWRAP_WETH_LENGTH:
+            PRINTF("Interpreting as INPUT_UNWRAP_WETH_LENGTH\n");
             context->next_param = INPUT_UNWRAP_WETH_RECIPIENT;
             break;
         case INPUT_UNWRAP_WETH_RECIPIENT:
+            PRINTF("Interpreting as INPUT_UNWRAP_WETH_RECIPIENT\n");
             PRINTF("Checking UNWRAP recipient\n");
             if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
                 if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
@@ -676,6 +688,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_UNWRAP_WETH_AMOUNT;
             break;
         case INPUT_UNWRAP_WETH_AMOUNT:
+            PRINTF("Interpreting as INPUT_UNWRAP_WETH_AMOUNT\n");
             if (add_wrap_or_unwrap(msg->parameter, context, OUTPUT) != 0) {
                 PRINTF("Error in add_wrap_or_unwrap for output\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -693,15 +706,19 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ###################
 
         case INPUT_PAY_PORTION_LENGTH:
+            PRINTF("Interpreting as INPUT_PAY_PORTION_LENGTH\n");
             context->next_param = INPUT_PAY_PORTION_TOKEN;
             break;
         case INPUT_PAY_PORTION_TOKEN:
+            PRINTF("Interpreting as INPUT_PAY_PORTION_TOKEN\n");
             context->next_param = INPUT_PAY_PORTION_RECIPIENT;
             break;
         case INPUT_PAY_PORTION_RECIPIENT:
+            PRINTF("Interpreting as INPUT_PAY_PORTION_RECIPIENT\n");
             context->next_param = INPUT_PAY_PORTION_AMOUNT;
             break;
         case INPUT_PAY_PORTION_AMOUNT: {
+            PRINTF("Interpreting as INPUT_PAY_PORTION_AMOUNT\n");
             uint16_t new;
             if (!U2BE_from_parameter(msg->parameter, &new)) {
                 PRINTF("Error: Not a valid basis point amount\n");
@@ -727,11 +744,13 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ######################
 
         case INPUT_PERMIT2_LENGTH:
+            PRINTF("Interpreting as INPUT_PERMIT2_LENGTH\n");
             context->permit2_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             context->current_permit_read = 0;
             context->next_param = INPUT_PERMIT2_SKIP_TOKEN;
             break;
         case INPUT_PERMIT2_SKIP_TOKEN:
+            PRINTF("Interpreting as INPUT_PERMIT2_SKIP_TOKEN\n");
             context->current_permit_read += PARAMETER_LENGTH;
             if (context->current_permit_read >= context->permit2_length) {
                 ++context->current_command;
@@ -745,6 +764,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         // Parsing V2_SWAP_EXACT_IN
         // ########################
         case INPUT_V2_SWAP_EXACT_IN_LENGTH:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_LENGTH\n");
             if (check_or_set_swap_type(context, EXACT_IN) != 0) {
                 PRINTF("Error: check_or_set_swap_type failed for EXACT_IN\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -752,6 +772,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_IN_RECIPIENT;
             break;
         case INPUT_V2_SWAP_EXACT_IN_RECIPIENT:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_RECIPIENT\n");
             if (handle_recipient(msg->parameter, context) != 0) {
                 PRINTF("Error: handle_recipient failed\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -759,20 +780,25 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN\n");
             memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V2_SWAP_EXACT_IN_AMOUNT_OUT_MIN;
             break;
         case INPUT_V2_SWAP_EXACT_IN_AMOUNT_OUT_MIN:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_AMOUNT_OUT_MIN\n");
             memmove(context->output.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET\n");
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER\n");
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH\n");
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (context->path_length < 2) {
                 PRINTF("Path length is too small to make sense %d\n", context->path_length);
@@ -782,6 +808,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PATH;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH: {
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PATH\n");
             bool finished;
             if (parse_v2_path(context, msg->parameter, &finished) != 0) {
                 PRINTF("Failed to parse path for V2_SWAP_EXACT_IN\n");
@@ -803,6 +830,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // #########################
 
         case INPUT_V2_SWAP_EXACT_OUT_LENGTH:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_LENGTH\n");
             if (check_or_set_swap_type(context, EXACT_OUT) != 0) {
                 PRINTF("Error: check_or_set_swap_type failed for EXACT_OUT\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -810,6 +838,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_RECIPIENT;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_RECIPIENT:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_RECIPIENT\n");
             if (handle_recipient(msg->parameter, context) != 0) {
                 PRINTF("Error: handle_recipient failed\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -817,20 +846,25 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT\n");
             memmove(context->output.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_AMOUNT_IN_MAX;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_AMOUNT_IN_MAX:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_AMOUNT_IN_MAX\n");
             memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET\n");
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER\n");
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH:
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH\n");
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (context->path_length < 2) {
                 PRINTF("Path length is too small to make sense %d\n", context->path_length);
@@ -840,6 +874,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PATH;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH: {
+            PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PATH\n");
             bool finished;
             if (parse_v2_path(context, msg->parameter, &finished) != 0) {
                 PRINTF("Failed to parse path for V2_SWAP_EXACT_OUT\n");
@@ -861,6 +896,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // ########################
 
         case INPUT_V3_SWAP_EXACT_IN_LENGTH:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_LENGTH\n");
             if (check_or_set_swap_type(context, EXACT_IN) != 0) {
                 PRINTF("Error: check_or_set_swap_type failed for EXACT_IN\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -868,6 +904,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V3_SWAP_EXACT_IN_RECIPIENT;
             break;
         case INPUT_V3_SWAP_EXACT_IN_RECIPIENT:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_RECIPIENT\n");
             if (handle_recipient(msg->parameter, context) != 0) {
                 PRINTF("Error: handle_recipient failed\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -875,20 +912,25 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN\n");
             memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V3_SWAP_EXACT_IN_AMOUNT_OUT_MIN;
             break;
         case INPUT_V3_SWAP_EXACT_IN_AMOUNT_OUT_MIN:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_AMOUNT_OUT_MIN\n");
             memmove(context->output.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET\n");
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER\n");
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH\n");
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (!v3_path_length_is_valid(context->path_length)) {
                 PRINTF("Path length is invalid\n");
@@ -898,6 +940,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PATH;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH: {
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PATH\n");
             bool finished;
             if (parse_v3_path(context, msg->parameter, false, &finished) != 0) {
                 PRINTF("Failed to parse path for V3_SWAP_EXACT_IN\n");
@@ -918,6 +961,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // #########################
 
         case INPUT_V3_SWAP_EXACT_OUT_LENGTH:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_LENGTH\n");
             if (check_or_set_swap_type(context, EXACT_OUT) != 0) {
                 PRINTF("Error: check_or_set_swap_type failed for EXACT_OUT\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -925,6 +969,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_RECIPIENT;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_RECIPIENT:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_RECIPIENT\n");
             if (handle_recipient(msg->parameter, context) != 0) {
                 PRINTF("Error: handle_recipient failed\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -932,20 +977,25 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT\n");
             memmove(context->output.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_AMOUNT_IN_MAX;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_AMOUNT_IN_MAX:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_AMOUNT_IN_MAX\n");
             memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET\n");
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER\n");
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH:
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH\n");
             context->path_length = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             if (!v3_path_length_is_valid(context->path_length)) {
                 PRINTF("Path length is invalid\n");
@@ -956,6 +1006,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
 
         case INPUT_V3_SWAP_EXACT_OUT_PATH: {
+            PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PATH\n");
             bool finished;
             if (parse_v3_path(context, msg->parameter, true, &finished) != 0) {
                 PRINTF("Failed to parse path for V3_SWAP_EXACT_OUT\n");
