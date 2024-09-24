@@ -583,16 +583,6 @@ static int check_or_set_swap_type(context_t *context, swap_type_t swap_type) {
     return 0;
 }
 
-// Check if the address is 0000000000000000000000000000000000000002
-static bool is_router_address(const uint8_t address[ADDRESS_LENGTH]) {
-    for (uint8_t i = 0; i < ADDRESS_LENGTH - 1; ++i) {
-        if (address[i] != 0) {
-            return false;
-        }
-    }
-    return (address[ADDRESS_LENGTH - 1] == 2);
-}
-
 static int handle_recipient(const uint8_t parameter[PARAMETER_LENGTH], context_t *context) {
     PRINTF("handle_recipient\n");
     if (context->recipient_set) {
@@ -690,9 +680,16 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_WRAP_ETH_RECIPIENT;
             break;
         case INPUT_WRAP_ETH_RECIPIENT:
+            PRINTF("Checking WRAP recipient\n");
             if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
-                PRINTF("Error unwrap recipient is not the router address\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+                                       context->own_address)) {
+                    PRINTF("Wrap recipient is not the router address or the sender\n");
+                    if (handle_recipient(msg->parameter, context) != 0) {
+                        PRINTF("Error: handle_recipient failed\n");
+                        msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    }
+                }
             }
             context->next_param = INPUT_WRAP_ETH_AMOUNT;
             break;
@@ -716,9 +713,16 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_UNWRAP_WETH_RECIPIENT;
             break;
         case INPUT_UNWRAP_WETH_RECIPIENT:
+            PRINTF("Checking UNWRAP recipient\n");
             if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
-                PRINTF("Error unwrap recipient is not the router address\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+                                       context->own_address)) {
+                    PRINTF("Unwrap recipient is not the router address or the sender\n");
+                    if (handle_recipient(msg->parameter, context) != 0) {
+                        PRINTF("Error: handle_recipient failed\n");
+                        msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    }
+                }
             }
             context->next_param = INPUT_UNWRAP_WETH_AMOUNT;
             break;

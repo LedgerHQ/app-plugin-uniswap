@@ -135,7 +135,7 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
     memset(msg->msg, 0, msg->msgLength);
     uint8_t index = msg->screenIndex;
 
-    bool has_recipient_screen = !is_sender_address(context->recipient);
+    bool has_recipient_screen = !is_sender_address(context->recipient, context->own_address);
 
     if (context->input.asset_type != UNKNOWN_TOKEN && context->output.asset_type != UNKNOWN_TOKEN) {
         // Skip warning + independent asset display

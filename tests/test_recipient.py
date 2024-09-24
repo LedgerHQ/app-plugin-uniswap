@@ -24,6 +24,14 @@ weth_to_wojak_recipient_2 = [
                                    amount_out=7654321,
                                    recipient="4e2324342bf5b8a1dca42915f0489497203d640f"),
 ]
+weth_to_wojak_recipient_self = [
+    crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.WETH.address,
+                                   intermediate_tokens=[],
+                                   out_token=tokens.WOJAK.address,
+                                   amount_in=1234567,
+                                   amount_out=7654321,
+                                   recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D"),
+]
 
 class TestRecipients:
 
@@ -37,3 +45,8 @@ class TestRecipients:
         with pytest.raises(ExceptionRAPDU) as e:
             uniswap_client.send_sync_sign_request(weth_to_wojak_recipient_1 + weth_to_wojak_recipient_2)
         assert e.value.status == 0x6A80
+
+    def test_valid_recipient_is_self_address(self, uniswap_client, navigation_helper):
+        uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(weth_to_wojak_recipient_self):
+            navigation_helper.ui_validate()

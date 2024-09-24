@@ -179,7 +179,7 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    if (!is_sender_address(context->recipient)) {
+    if (!is_sender_address(context->recipient, context->own_address)) {
         PRINTF("Displaying recipient\n");
         ++msg->numScreens;
     }

@@ -151,18 +151,10 @@ def craft_uniswap_tx(commands: List[UniswapCommand], uniswap_contract_data) -> b
         commands_bytes += command.command_byte
         inputs.append(command.input)
 
-    data = uniswap_contract_data.encodeABI("execute", [
+    data = uniswap_contract_data.encode_abi("execute", [
         commands_bytes,
         inputs,
         int(datetime.datetime(2023, 12, 25, 0, 0).timestamp()),
     ])
-
-    print(data)
-    selector = data[2:2 + 8]
-    print(selector)
-    calldata = data[2 + 8:]
-    chunks = [calldata[i:i+64] for i in range(0, len(calldata), 64)]
-    for chunk in chunks:
-        print(chunk)
 
     return data
