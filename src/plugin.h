@@ -251,6 +251,8 @@ typedef struct context_s {
 
     intermediate_data_t intermediate;
 
+    uint8_t own_address[ADDRESS_LENGTH];
+
     selector_t selectorIndex;
 } context_t;
 

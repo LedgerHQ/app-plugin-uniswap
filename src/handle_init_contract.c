@@ -1,6 +1,8 @@
 #include "plugin_utils.h"
 #include "plugin.h"
+#include "os.h"
 #include "check_tx_content.h"
+#include "uniswap_contract_helpers.h"
 
 // Called once to init.
 void handle_init_contract(ethPluginInitContract_t *msg) {
@@ -30,6 +32,12 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
     // Initialize the context (to 0).
     memset(context, 0, sizeof(*context));
 
+    if (get_self_address(context->own_address, msg->bip32) != 0) {
+        PRINTF("Error: get_self_address failed\n");
+        msg->result = ETH_PLUGIN_RESULT_ERROR;
+        return;
+    }
+
     size_t index;
     if (!find_selector(U4BE(msg->selector, 0), SELECTORS, SELECTOR_COUNT, &index)) {
         PRINTF("Error: selector not found!\n");
@@ -51,10 +59,6 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
         case EXECUTE:
             context->next_param = COMMANDS_OFFSET;
             break;
-        // case BOILERPLATE_DUMMY_2:
-        //     context->next_param = TOKEN_RECEIVED;
-        //     break;
-        // Keep this
         default:
             PRINTF("Missing selectorIndex: %d\n", context->selectorIndex);
             msg->result = ETH_PLUGIN_RESULT_ERROR;

@@ -12,7 +12,7 @@ from .utils import WalletAddr
 
 configuration.OPTIONAL.MAIN_APP_DIR = "tests/.test_dependencies/"
 
-configuration.OPTIONAL.BACKEND_SCOPE = "class"
+configuration.OPTIONAL.BACKEND_SCOPE = "session"
 
 
 #########################
@@ -32,7 +32,7 @@ def uniswap_contract_data():
     return read_uniswap_contract_data()
 
 from .uniswap_client import UniswapClient
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def uniswap_client(backend, uniswap_contract_data):
     return UniswapClient(backend, uniswap_contract_data)
 

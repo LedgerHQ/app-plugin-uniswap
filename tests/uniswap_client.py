@@ -8,7 +8,7 @@ from .token_metadata_database import TokenMetadata
 from .utils import get_appname_from_makefile
 from .uniswap_crafter import craft_uniswap_tx
 
-BIP32_PATH = "m/44'/60'/1'/0/0"
+BIP32_PATH = "m/44'/60'/0'/0/0"
 
 PLUGIN_NAME = get_appname_from_makefile()
 
