@@ -173,12 +173,6 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    if (!valid_wrap_unwrap_amounts(context)) {
-        PRINTF("Error: valid_wrap_unwrap_amounts failed\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
-        return;
-    }
-
     if (!is_sender_address(context->recipient, context->own_address)) {
         PRINTF("Displaying recipient\n");
         ++msg->numScreens;
