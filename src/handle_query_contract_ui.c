@@ -3,13 +3,15 @@
 
 static bool warning(ethQueryContractUI_t *msg, context_t *context) {
     strlcpy(msg->title, "WARNING", msg->titleLength);
-    if ((context->input.asset_type == UNKNOWN_TOKEN) &&
-        (context->output.asset_type == UNKNOWN_TOKEN)) {
+    uint8_t missing_count = (context->input.asset_type == UNKNOWN_TOKEN) + (context->output.asset_type == UNKNOWN_TOKEN) + (context->pay_portion_asset_type == UNKNOWN_TOKEN);
+    if (missing_count > 1) {
         strlcpy(msg->msg, "Unknown tokens", msg->msgLength);
     } else if (context->input.asset_type == UNKNOWN_TOKEN) {
         strlcpy(msg->msg, "Unknown token sent", msg->msgLength);
-    } else {
+    } else if (context->output.asset_type == UNKNOWN_TOKEN) {
         strlcpy(msg->msg, "Unknown token received", msg->msgLength);
+    } else {
+        strlcpy(msg->msg, "Unknown pay portion token received", msg->msgLength);
     }
     return true;
 }
@@ -91,7 +93,7 @@ static bool amount_out(ethQueryContractUI_t *msg, const context_t *context) {
 }
 
 static bool pay_portion(ethQueryContractUI_t *msg, const context_t *context) {
-    strlcpy(msg->title, "Protocol fee", msg->titleLength);
+    strlcpy(msg->title, "Protocol fee ", msg->titleLength);
 
     // We can't use snprintf here because plugins are compiled without
     // Resort to doing manual computation
@@ -118,7 +120,17 @@ static bool pay_portion(ethQueryContractUI_t *msg, const context_t *context) {
     } else {
         strlcat(msg->msg, fractionnal_string, msg->msgLength);
     }
-    strlcat(msg->msg, "%", msg->msgLength);
+    strlcat(msg->msg, "% ", msg->msgLength);
+
+    // Display the currency
+    if (context->pay_portion_asset_type == KNOWN_TOKEN) {
+        strlcat(msg->msg, context->pay_portion_asset.token_info.ticker, msg->msgLength);
+    } else {
+        char tmp_content[2 + 40 + 1]; // 0x + addr + '\0'
+        // Can't fail
+        format_address(tmp_content, sizeof(tmp_content), context->pay_portion_asset.address);
+        strlcat(msg->msg, tmp_content, msg->msgLength);
+    }
 
     return true;
 }
@@ -137,9 +149,23 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
 
     bool has_recipient_screen = !is_sender_address(context->recipient, context->own_address);
 
-    if (context->input.asset_type != UNKNOWN_TOKEN && context->output.asset_type != UNKNOWN_TOKEN) {
-        // Skip warning + independent asset display
-        index += 3;
+    bool skip_warning = true;
+    bool skip_independent_asset_display = true;
+    if (context->input.asset_type == UNKNOWN_TOKEN || context->output.asset_type == UNKNOWN_TOKEN) {
+        skip_warning = false;
+        skip_independent_asset_display = false;
+    }
+    if (context->pay_portion_asset_type == UNKNOWN_TOKEN) {
+        skip_warning = false;
+    }
+    if (skip_warning) {
+        index += 1;
+    }
+    if (skip_independent_asset_display) {
+        if (index != 0 || skip_warning) {
+            // Don't skip the warning if not needed
+            index += 2;
+        }
     }
 
     switch (index) {
@@ -165,7 +191,7 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
             } else if (context->pay_portion_amount != 0) {
                 ret = pay_portion(msg, context);
             } else {
-                PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+                PRINTF("Received an invalid index %d/%d\n", index, msg->screenIndex);
             }
             break;
         case 6:
@@ -173,12 +199,12 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
             if (has_recipient_screen && context->pay_portion_amount != 0) {
                 ret = pay_portion(msg, context);
             } else {
-                PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+                PRINTF("Received an invalid index %d/%d\n", index, msg->screenIndex);
             }
             break;
 
         default:
-            PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);
+            PRINTF("Received an invalid index %d/%d\n", index, msg->screenIndex);
     }
 
     msg->result = ret ? ETH_PLUGIN_RESULT_OK : ETH_PLUGIN_RESULT_ERROR;

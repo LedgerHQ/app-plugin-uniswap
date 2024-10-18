@@ -1,40 +1,46 @@
 #include "plugin.h"
 
 // We will run in this function if we requested CAL data in handle_finalize
-
-static int provide_token_for_io(io_data_t *io_data,
-                                const extraInfo_t *item,
-                                bool *info_is_missing) {
+static bool provide_token_for_io_raw(asset_type_t *asset_type,
+                                    asset_info_t *asset_info,
+                                    const extraInfo_t *item) {
     // Check if we need CAL data for this asset
-    *info_is_missing = false;
-    if (io_data->asset_type == UNKNOWN_TOKEN) {
+    if (*asset_type == UNKNOWN_TOKEN) {
         PRINTF("CAL data was requested\n");
         if (item == NULL) {
-            *info_is_missing = true;
             PRINTF("Warning: no CAL data provided\n");
+            return false;
         } else {
             // Ensure the addresses match
-            if (memcmp(io_data->u.address, item->token.address, ADDRESS_LENGTH) != 0) {
-                PRINTF("Error: data provided by the CAL does not match\n");
-                PRINTF("Needed: %.*H\n", ADDRESS_LENGTH, io_data->u.address);
+            if (memcmp(asset_info->address, item->token.address, ADDRESS_LENGTH) != 0) {
+                PRINTF("Warning: data provided by the CAL does not match\n");
+                PRINTF("Needed: %.*H\n", ADDRESS_LENGTH, asset_info->address);
                 PRINTF("Received: %.*H\n", ADDRESS_LENGTH, item->token.address);
-                return -1;
+                return false;
             } else {
                 // Remember that we know this token.
-                io_data->asset_type = KNOWN_TOKEN;
+                *asset_type = KNOWN_TOKEN;
                 // Store its decimals.
-                io_data->u.token_info.decimals = item->token.decimals;
+                asset_info->token_info.decimals = item->token.decimals;
                 // Store its ticker.
-                strlcpy(io_data->u.token_info.ticker,
+                strlcpy(asset_info->token_info.ticker,
                         (char *) item->token.ticker,
-                        sizeof(io_data->u.token_info.ticker));
+                        sizeof(asset_info->token_info.ticker));
+                return true;
             }
         }
     } else if (item != NULL) {
         PRINTF("Warning: CAL data provided but not requested\n");
+        return true;
     }
-    return 0;
+    return true;
 }
+
+
+static bool provide_token_for_io(io_data_t *io_data,
+                                const extraInfo_t *item) {
+    return provide_token_for_io_raw(&io_data->asset_type, &io_data->u, item);
+};
 
 void handle_provide_token(ethPluginProvideInfo_t *msg) {
     context_t *context = (context_t *) msg->pluginContext;
@@ -42,19 +48,42 @@ void handle_provide_token(ethPluginProvideInfo_t *msg) {
     msg->additionalScreens = 0;
     bool token_in_info_missing;
     bool token_out_info_missing;
+    bool token_pay_portion_info_missing;
 
-    if (provide_token_for_io(&context->input, msg->item1, &token_in_info_missing) != 0) {
-        PRINTF("Error in provide_token_for_io for input\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
+    token_in_info_missing = !provide_token_for_io(&context->input, msg->item1);
+
+    token_out_info_missing = !provide_token_for_io(&context->output, msg->item2);
+
+    if (context->pay_portion_asset_type == UNKNOWN_TOKEN) {
+        PRINTF("Trying to find info for PAY_PORTION token in CAL\n");
+        token_pay_portion_info_missing = true;
+        if (provide_token_for_io_raw(&context->pay_portion_asset_type, &context->pay_portion_asset, msg->item1)) {
+            PRINTF("Found it in item 1\n");
+            token_pay_portion_info_missing = false;
+        } else if (provide_token_for_io_raw(&context->pay_portion_asset_type, &context->pay_portion_asset, msg->item2)) {
+            PRINTF("Found it in item 2\n");
+            token_pay_portion_info_missing = false;
+        }
+    } else {
+        token_pay_portion_info_missing = false;
     }
 
-    if (provide_token_for_io(&context->output, msg->item2, &token_out_info_missing) != 0) {
-        PRINTF("Error in provide_token_for_io for output\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
+    if (token_in_info_missing) {
+        PRINTF("Missing info for token IN\n");
+    }
+    if (token_out_info_missing) {
+        PRINTF("Missing info for token OUT\n");
+    }
+    if (token_pay_portion_info_missing) {
+        PRINTF("Missing info for token PAY PORTION\n");
     }
 
-    if (token_in_info_missing || token_out_info_missing) {
+    if (token_in_info_missing || token_out_info_missing || token_pay_portion_info_missing) {
         // Additional screen for a warning
-        msg->additionalScreens += 3;
+        msg->additionalScreens += 1;
+        if (token_in_info_missing || token_out_info_missing) {
+            // Additional screen for independent in / out asset display
+            msg->additionalScreens += 2;
+        }
     }
 }

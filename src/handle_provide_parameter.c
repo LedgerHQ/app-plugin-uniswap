@@ -172,19 +172,25 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
     return 0;
 }
 
-// Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
-static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
+static int set_token_raw(const uint8_t address[ADDRESS_LENGTH],
+                         asset_type_t *asset_type,
+                         asset_info_t *pay_portion_asset) {
     PRINTF("Setting token\n");
     if (token_is_weth(address)) {
         PRINTF("Token to set is WETH\n");
-        io_data->asset_type = WETH;
+        *asset_type = WETH;
     } else {
         PRINTF("Token to set is unknown %.*H\n", ADDRESS_LENGTH, address);
-        io_data->asset_type = UNKNOWN_TOKEN;
-        memmove(io_data->u.address, address, ADDRESS_LENGTH);
+        *asset_type = UNKNOWN_TOKEN;
+        memmove(pay_portion_asset->address, address, ADDRESS_LENGTH);
     }
 
     return 0;
+}
+
+// Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
+static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
+    return set_token_raw(address, &io_data->asset_type, &io_data->u);
 }
 
 static bool address_partially_matches_io(const uint8_t *address,
@@ -707,10 +713,20 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_PAY_PORTION_LENGTH:
             PRINTF("Interpreting as INPUT_PAY_PORTION_LENGTH\n");
             context->next_param = INPUT_PAY_PORTION_TOKEN;
+            if (context->pay_portion_asset_type != UNSET) {
+                PRINTF("One PAY_PORTION has already been received. Refusing to handle multiple\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             break;
         case INPUT_PAY_PORTION_TOKEN:
             PRINTF("Interpreting as INPUT_PAY_PORTION_TOKEN\n");
             context->next_param = INPUT_PAY_PORTION_RECIPIENT;
+            if (set_token_raw(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+                                     &context->pay_portion_asset_type,
+                                     &context->pay_portion_asset) != 0) {
+                PRINTF("set_token_raw failed\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
             break;
         case INPUT_PAY_PORTION_RECIPIENT:
             PRINTF("Interpreting as INPUT_PAY_PORTION_RECIPIENT\n");
@@ -718,18 +734,15 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_PAY_PORTION_AMOUNT: {
             PRINTF("Interpreting as INPUT_PAY_PORTION_AMOUNT\n");
-            uint16_t new;
-            if (!U2BE_from_parameter(msg->parameter, &new)) {
+            if (!U2BE_from_parameter(msg->parameter, &context->pay_portion_amount)) {
                 PRINTF("Error: Not a valid basis point amount\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
             } else {
-                uint32_t pay_portion_sum = context->pay_portion_amount + new;
-                PRINTF("pay_portion_sum %d\n", pay_portion_sum);
-                if (pay_portion_sum > 10000) {
+                PRINTF("context->pay_portion_amount %d\n", context->pay_portion_amount);
+                if (context->pay_portion_amount > 10000) {
                     PRINTF("Error: Not a valid basis point amount\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 } else {
-                    context->pay_portion_amount = pay_portion_sum;
                     ++context->current_command;
                     if (prepare_reading_next_input(context) != 0) {
                         msg->result = ETH_PLUGIN_RESULT_ERROR;
