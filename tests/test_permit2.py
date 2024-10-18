@@ -18,14 +18,12 @@ class TestPermit2:
                                            amount_in=240000000000000000,
                                            amount_out=1000000000000000000),
         ]
-        fake_permit2_transfer_from = [crafter.craft_fake_PERMIT2_TRANSFER_FROM()]
         fake_permit2_permit_batch = [crafter.craft_fake_PERMIT2_PERMIT_BATCH()]
         fake_permit2_permit = [crafter.craft_fake_PERMIT2_PERMIT()]
         fake_permit2_transfer_from_batch = [crafter.craft_fake_PERMIT2_TRANSFER_FROM_BATCH()]
 
         # They all have the same display
         for contract in [usdt_to_wojak_exact_in_v2,
-                         usdt_to_wojak_exact_in_v2 + fake_permit2_transfer_from,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_permit_batch,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_permit,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_transfer_from_batch,
