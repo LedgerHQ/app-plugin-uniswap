@@ -100,7 +100,6 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 PRINTF("Preparing to read V3_SWAP_EXACT_OUT\n");
                 context->next_param = INPUT_V3_SWAP_EXACT_OUT_LENGTH;
                 break;
-            case PERMIT2_TRANSFER_FROM:
             case PERMIT2_PERMIT_BATCH:
             case PERMIT2_TRANSFER_FROM_BATCH:
             case PERMIT2_PERMIT:
