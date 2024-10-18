@@ -124,6 +124,27 @@ typedef enum asset_type_e {
     KNOWN_TOKEN,
 } asset_type_t;
 
+typedef union asset_info_u {
+    // Amount of currency wrapped / unwrapped if applicable
+    // Set at parsing stage
+    // Used at finalize stage to ensure it matches 'amount'
+    uint8_t wrap_unwrap_amount[INT256_LENGTH];
+
+    // Address of the token if it is unknown
+    // Set at parsing stage
+    // Used again at query_ui stage to display the token address if no CAL data is provided
+    // Used at finalize stage to request the token info
+    uint8_t address[ADDRESS_LENGTH];
+
+    // Token data from the CAL if the token is unknown
+    // Set at provide_info stage if CAL data is provided
+    // Used at query_ui stage to display the token info if CAL data is provided
+    struct {
+        uint8_t decimals;
+        char ticker[MAX_TICKER_LEN];
+    } token_info;
+} asset_info_t;
+
 // Generic structure working for both the input of the swap and the output
 typedef struct io_data_s {
     // Structure management byte
@@ -136,26 +157,8 @@ typedef struct io_data_s {
 
     // Amount of currency swapped
     uint8_t amount[INT256_LENGTH];
-    union {
-        // Amount of currency wrapped / unwrapped if applicable
-        // Set at parsing stage
-        // Used at finalize stage to ensure it matches 'amount'
-        uint8_t wrap_unwrap_amount[INT256_LENGTH];
 
-        // Address of the token if it is unknown
-        // Set at parsing stage
-        // Used again at query_ui stage to display the token address if no CAL data is provided
-        // Used at finalize stage to request the token info
-        uint8_t address[ADDRESS_LENGTH];
-
-        // Token data from the CAL if the token is unknown
-        // Set at provide_info stage if CAL data is provided
-        // Used at query_ui stage to display the token info if CAL data is provided
-        struct {
-            uint8_t decimals;
-            char ticker[MAX_TICKER_LEN];
-        } token_info;
-    } u;
+    asset_info_t u;
 } io_data_t;
 
 typedef enum intermediate_status_e {
@@ -189,9 +192,6 @@ typedef struct intermediate_data_s {
 
     // Amount of currency swapped
     uint8_t address[ADDRESS_LENGTH];
-
-    // uint8_t tmp_address_in[ADDRESS_LENGTH];
-    // uint8_t tmp_address_out[ADDRESS_LENGTH];
 } intermediate_data_t;
 
 typedef enum swap_type_e {
@@ -245,6 +245,8 @@ typedef struct context_s {
     bool sweep_received;
 
     uint16_t pay_portion_amount;
+    asset_type_t pay_portion_asset_type;
+    asset_info_t pay_portion_asset;
 
     bool recipient_set;
     uint8_t recipient[ADDRESS_LENGTH];
@@ -263,8 +265,10 @@ typedef struct context_s {
 // char (*__kaboom)[sizeof( selector_t )] = 1;
 
 // Plugin-only memory allocated by the Ethereum application and used by the plugin.
-// #define PLUGIN_CONTEXT_SIZE2 (10 * INT256_LENGTH)
+#define PLUGIN_CONTEXT_SIZE2 (10 * INT256_LENGTH)
 // It is recommended to cast the raw uin8_t array to a structure meaningfull for your plugin
 // Helper to check that the actual plugin context structure is not bigger than the allocated memory
-// #define ASSERT_SIZEOF_PLUGIN_CONTEXT2(s) \
-//     _Static_assert(sizeof(s) <= PLUGIN_CONTEXT_SIZE2, "Plugin context structure is too big.")
+#define ASSERT_SIZEOF_PLUGIN_CONTEXT2(s) \
+    _Static_assert(sizeof(s) <= PLUGIN_CONTEXT_SIZE2, "Plugin context structure is too big.")
+
+ASSERT_SIZEOF_PLUGIN_CONTEXT2(context_t);
