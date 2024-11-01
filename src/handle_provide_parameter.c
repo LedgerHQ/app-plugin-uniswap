@@ -1026,6 +1026,10 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             // END
             // ###
 
+        case UNEXPECTED_PARAMETER:
+            PRINTF("Unexpected parameter: drop it\n");
+            break;
+
         default:
             PRINTF("Param not supported: %d\n", context->next_param);
             msg->result = ETH_PLUGIN_RESULT_ERROR;
