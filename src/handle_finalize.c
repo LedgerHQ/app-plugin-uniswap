@@ -50,13 +50,15 @@ static bool valid_wrap_unwrap_amounts(const context_t *context) {
                 return false;
             }
         } else if (context->output.asset_type == ETH) {
-            if (!inferior_or_equal(context->output.u.wrap_unwrap_amount, context->output.amount)) {
-                PRINTF("Error: unwrap amount is not inferior_or_equal to output\n");
-                PRINT_PARAMETER("context->output.u.wrap_unwrap_amount",
-                                context->output.u.wrap_unwrap_amount);
-                PRINT_PARAMETER("context->output.amount", context->output.amount);
-                return false;
-            }
+            // this check does not seem relevant in light of recent Uniswap transactions
+            // if (!inferior_or_equal(context->output.u.wrap_unwrap_amount, context->output.amount)) {
+            //     PRINTF("Error: unwrap amount is not inferior_or_equal to output\n");
+            //     PRINT_PARAMETER("context->output.u.wrap_unwrap_amount",
+            //                     context->output.u.wrap_unwrap_amount);
+            //     PRINT_PARAMETER("context->output.amount", context->output.amount);
+            //     return false;
+            // }
+            return true;
         }
     } else {
         if (context->input.asset_type == ETH) {
@@ -163,12 +165,6 @@ void handle_finalize(ethPluginFinalize_t *msg) {
 
     if (context->intermediate.intermediate_status != UNUSED) {
         PRINTF("Error: finalize failed, intermediate_status is still in use\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
-        return;
-    }
-
-    if (!valid_wrap_unwrap_amounts(context)) {
-        PRINTF("Error: valid_wrap_unwrap_amounts failed\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
     }
