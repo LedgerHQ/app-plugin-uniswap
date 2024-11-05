@@ -31,14 +31,14 @@ static bool equal(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_L
  * -------------------------------------------------------------------------------------------------
  * | EXACT_IN:                         |                         |       |                         |
  * |    - WRAP: ETH -> WETH -> TOKEN   | KO (will fail on chain) | OK    | KO (waste)              |
- * |    - UNWRAP: TOKEN -> WETH -> ETH | OK (this is a min)      | OK    | KO (will fail on chain) |
+ * |    - UNWRAP: TOKEN -> WETH -> ETH | OK                      | OK    | OK                      |
  * -------------------------------------------------------------------------------------------------
  * | EXACT_OUT:                        |                         |       |                         |
  * |    - WRAP: ETH -> WETH -> TOKEN   | KO (will fail on chain) | OK    | OK (but sweep needed!)  |
  * |    - UNWRAP: TOKEN -> WETH -> ETH | OK (this is a min)      | OK    | KO (will fail on chain) |
  * -------------------------------------------------------------------------------------------------
  */
-static bool valid_wrap_unwrap_amounts(const context_t *context) {
+static bool valid_wrap_unwrap_amounts(context_t *context) {
     bool sweep_expected = false;
     if (context->swap_type == EXACT_IN) {
         if (context->input.asset_type == ETH) {
@@ -50,15 +50,11 @@ static bool valid_wrap_unwrap_amounts(const context_t *context) {
                 return false;
             }
         } else if (context->output.asset_type == ETH) {
-            // this check does not seem relevant in light of recent Uniswap transactions
-            // if (!inferior_or_equal(context->output.u.wrap_unwrap_amount, context->output.amount)) {
-            //     PRINTF("Error: unwrap amount is not inferior_or_equal to output\n");
-            //     PRINT_PARAMETER("context->output.u.wrap_unwrap_amount",
-            //                     context->output.u.wrap_unwrap_amount);
-            //     PRINT_PARAMETER("context->output.amount", context->output.amount);
-            //     return false;
-            // }
-            return true;
+            // minimum output amount of exact in can be 0 --> no check here
+            // override the amount in case of unwrap
+            memmove(context->output.amount,
+                    context->output.u.wrap_unwrap_amount,
+                    sizeof(context->output.amount));
         }
     } else {
         if (context->input.asset_type == ETH) {

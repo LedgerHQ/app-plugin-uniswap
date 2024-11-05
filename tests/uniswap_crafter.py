@@ -126,6 +126,16 @@ def craft_PAY_PORTION(token: str, recipient: str, amount: int) -> UniswapCommand
                                         ]
     ))
 
+def craft_SWEEP(amount: int, token: str, recipient: str) -> UniswapCommand:
+    return UniswapCommand(command_byte=bytes.fromhex("04"),
+                          input=encode(['address', 'address', 'uint256'],
+                                        [
+                                            token,
+                                            recipient,
+                                            amount,
+                                        ]
+    ))
+
 def craft_fake(command_byte) -> UniswapCommand:
     # Not a real PERMIT2_PERMIT, we just want some data to skip
     content=b'000000000000000000000000000000000000000212345678901234567890123456789012345678901234567890123456789098765432123456789098765432123456789098765430'

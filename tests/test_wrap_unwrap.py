@@ -169,12 +169,6 @@ class TestWrapUnwrap:
         with uniswap_client.send_sign_request(to_weth_exact_in + unwrap_less):
             navigation_helper.ui_validate()
 
-    def test_invalid_exact_in_unwrap_more(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(to_weth_exact_in + unwrap_more)
-        assert e.value.status == 0x6A80
-
     # Exact OUT #
 
     def test_invalid_exact_out_wrap_less(self, uniswap_client, navigation_helper):

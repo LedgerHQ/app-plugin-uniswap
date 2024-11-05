@@ -119,6 +119,10 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 PRINTF("Preparing to read PAY_PORTION\n");
                 context->next_param = INPUT_PAY_PORTION_LENGTH;
                 break;
+            case SWEEP:
+                PRINTF("Preparing to read SWEEP\n");
+                context->next_param = INPUT_SWEEP_LENGTH;
+                break;
             default:
                 PRINTF("Error: command %d not handled\n", current_command);
                 return -1;
@@ -1021,6 +1025,39 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 }
             }
         } break;
+
+            // ###################
+            // Parsing SWEEP
+            // ###################
+
+        case INPUT_SWEEP_LENGTH:
+            PRINTF("Interpreting as INPUT_SWEEP_LENGTH\n");
+            context->next_param = INPUT_SWEEP_TOKEN;
+            break;
+        case INPUT_SWEEP_TOKEN:
+            PRINTF("Interpreting as INPUT_SWEEP_TOKEN\n");
+            context->next_param = INPUT_SWEEP_RECIPIENT;
+            break;
+        case INPUT_SWEEP_RECIPIENT:
+            PRINTF("Interpreting as INPUT_SWEEP_RECIPIENT\n");
+            // check here if the sweep recipient is the sender address
+            if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+                                   context->own_address)) {
+                PRINTF("Sweep recipient is not the sender\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
+            context->next_param = INPUT_SWEEP_AMOUNT;
+            break;
+        case INPUT_SWEEP_AMOUNT:
+            PRINTF("Interpreting as INPUT_SWEEP_AMOUNT\n");
+            // override the amount in case of sweep
+            memmove(context->output.amount, msg->parameter, sizeof(context->output.amount));
+
+            ++context->current_command;
+            if (prepare_reading_next_input(context) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
+            break;
 
             // ###
             // END
