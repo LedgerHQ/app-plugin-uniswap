@@ -28,12 +28,12 @@ class UniswapClient:
                                         UNISWAP_SELECTOR)
 
     @contextmanager
-    def send_sign_request(self, uniswap_commands):
-        with self.send_raw_sign_request(craft_uniswap_tx(uniswap_commands, self.uniswap_contract_data)):
+    def send_sign_request(self, uniswap_commands, amount=0):
+        with self.send_raw_sign_request(craft_uniswap_tx(uniswap_commands, self.uniswap_contract_data), amount):
             yield
 
     @contextmanager
-    def send_raw_sign_request(self, data):
+    def send_raw_sign_request(self, data, amount=0):
         print("Contract")
         print(data[:10])
         for i in range(0, len(data) - 10, 64):
@@ -47,6 +47,7 @@ class UniswapClient:
                 "maxPriorityFeePerGas": Web3.to_wei(1.5, "gwei"),
                 "gas": 173290,
                 "to": self.uniswap_contract_data.address,
+                "value": amount,
                 # TODO: check ?
                 "chainId": ChainId.ETH,
                 "data": data
@@ -54,8 +55,8 @@ class UniswapClient:
         ):
             yield
 
-    def send_sync_sign_request(self, uniswap_commands):
-        with self.send_sign_request(uniswap_commands):
+    def send_sync_sign_request(self, uniswap_commands, amount=0):
+        with self.send_sign_request(uniswap_commands, amount):
             pass
 
     def provide_token_metadata_raw(self, ticker, address, decimals, chain_id):

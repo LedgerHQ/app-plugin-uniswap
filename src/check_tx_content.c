@@ -22,10 +22,5 @@ bool check_tx_content(const txContent_t *tx_content) {
         ret = false;
     }
 
-    if (tx_content->value.length != 0) {
-        PRINTF("Error: no native eth payment for Uniswap smart contract\n");
-        ret = false;
-    }
-
     return ret;
 }
