@@ -20,7 +20,7 @@ APPNAME = "Uniswap"
 
 # Application version
 APPVERSION_M = 1
-APPVERSION_N = 3
+APPVERSION_N = 4
 APPVERSION_P = 0
 
 APP_SOURCE_FILES += $(BOLOS_SDK)/lib_standard_app/crypto_helpers.c
