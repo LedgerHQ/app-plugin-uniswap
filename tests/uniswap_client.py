@@ -29,7 +29,15 @@ class UniswapClient:
 
     @contextmanager
     def send_sign_request(self, uniswap_commands):
-        data = craft_uniswap_tx(uniswap_commands, self.uniswap_contract_data)
+        with self.send_raw_sign_request(craft_uniswap_tx(uniswap_commands, self.uniswap_contract_data)):
+            yield
+
+    @contextmanager
+    def send_raw_sign_request(self, data):
+        print("Contract")
+        print(data[:10])
+        for i in range(0, len(data) - 10, 64):
+            print(data[10+i:10+i+64])
         # send the transaction
         with self.client.sign(
             BIP32_PATH,
