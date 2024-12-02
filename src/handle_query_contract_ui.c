@@ -7,9 +7,9 @@ static bool warning(ethQueryContractUI_t *msg, context_t *context) {
         (context->output.asset_type == UNKNOWN_TOKEN)) {
         strlcpy(msg->msg, "Unknown tokens", msg->msgLength);
     } else if (context->input.asset_type == UNKNOWN_TOKEN) {
-        strlcpy(msg->msg, "Unknown token sent", msg->msgLength);
+        strlcpy(msg->msg, "Send unknown token", msg->msgLength);
     } else {
-        strlcpy(msg->msg, "Unknown token received", msg->msgLength);
+        strlcpy(msg->msg, "Get unknown token", msg->msgLength);
     }
     return true;
 }
@@ -31,11 +31,11 @@ static bool format_address(char *msg, size_t msgLength, const uint8_t address[AD
 
 static bool asset_in(ethQueryContractUI_t *msg, const io_data_t *io_data) {
     if (io_data->asset_type == ETH) {
-        strlcpy(msg->title, "Send", msg->titleLength);
+        strlcpy(msg->title, "Send token", msg->titleLength);
         strlcpy(msg->msg, "Ethereum", msg->msgLength);
         return true;
     } else if (io_data->asset_type == KNOWN_TOKEN) {
-        strlcpy(msg->title, "Send", msg->titleLength);
+        strlcpy(msg->title, "Send token", msg->titleLength);
         strlcpy(msg->msg, io_data->u.token_info.ticker, msg->msgLength);
         return true;
     } else {
@@ -46,15 +46,15 @@ static bool asset_in(ethQueryContractUI_t *msg, const io_data_t *io_data) {
 
 static bool asset_out(ethQueryContractUI_t *msg, const io_data_t *io_data) {
     if (io_data->asset_type == ETH) {
-        strlcpy(msg->title, "Receive", msg->titleLength);
+        strlcpy(msg->title, "Get token", msg->titleLength);
         strlcpy(msg->msg, "Ethereum", msg->msgLength);
         return true;
     } else if (io_data->asset_type == KNOWN_TOKEN) {
-        strlcpy(msg->title, "Receive", msg->titleLength);
+        strlcpy(msg->title, "Get token", msg->titleLength);
         strlcpy(msg->msg, io_data->u.token_info.ticker, msg->msgLength);
         return true;
     } else {
-        strlcpy(msg->title, "Receive token", msg->titleLength);
+        strlcpy(msg->title, "Get token", msg->titleLength);
         return format_address(msg->msg, msg->msgLength, io_data->u.address);
     }
 }
@@ -97,7 +97,7 @@ static bool amount_out(ethQueryContractUI_t *msg, const context_t *context) {
     if (context->swap_type == EXACT_IN) {
         strlcpy(msg->title, "Get minimum", msg->titleLength);
     } else {
-        strlcpy(msg->title, "Receive", msg->titleLength);
+        strlcpy(msg->title, "Get", msg->titleLength);
     }
     return format_amount(msg->msg, msg->msgLength, &context->output);
 }
