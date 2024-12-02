@@ -60,15 +60,27 @@ static bool asset_out(ethQueryContractUI_t *msg, const io_data_t *io_data) {
 }
 
 static bool format_amount(char *msg, size_t msgLength, const io_data_t *io_data) {
-    if (io_data->asset_type == UNKNOWN_TOKEN) {
-        return amountToString(io_data->amount, sizeof(io_data->amount), 0, "???", msg, msgLength);
+    if (is_contract_balance(io_data->amount)) {
+        PRINTF("Formatting as contract balance\n");
+        strlcpy(msg, io_data->u.token_info.ticker, msgLength);
+        strlcat(msg, " CONTRACT_BALANCE", msgLength);
+        return true;
     } else {
-        return amountToString(io_data->amount,
-                              sizeof(io_data->amount),
-                              io_data->u.token_info.decimals,
-                              io_data->u.token_info.ticker,
-                              msg,
-                              msgLength);
+        if (io_data->asset_type == UNKNOWN_TOKEN) {
+            return amountToString(io_data->amount,
+                                  sizeof(io_data->amount),
+                                  0,
+                                  "???",
+                                  msg,
+                                  msgLength);
+        } else {
+            return amountToString(io_data->amount,
+                                  sizeof(io_data->amount),
+                                  io_data->u.token_info.decimals,
+                                  io_data->u.token_info.ticker,
+                                  msg,
+                                  msgLength);
+        }
     }
 }
 
