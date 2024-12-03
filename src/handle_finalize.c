@@ -117,26 +117,19 @@ void handle_finalize(ethPluginFinalize_t *msg) {
     }
 
     if (context->output.asset_type != ETH) {
-        // Max of sweep and amount out
-        if (superior(context->sweep_amount, context->output.amount)) {
+        if (context->sweep_received) {
             PRINTF("Displaying sweep amount as output\n");
             PRINTF("context->output.amount %.*H\n", PARAMETER_LENGTH, context->output.amount);
             PRINTF("context->sweep_amount %.*H\n", PARAMETER_LENGTH, context->sweep_amount);
             memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
         }
     } else {
-        // Max of sweep, amount out, and unwrap
-        uint8_t *max;
-        if (superior(context->sweep_amount, context->output.u.wrap_unwrap_amount)) {
-            PRINTF("Trying sweep_amount as out output\n");
-            max = context->sweep_amount;
-        } else {
-            PRINTF("Trying unwrap_amount as out output\n");
-            max = context->output.u.wrap_unwrap_amount;
-        }
-        if (superior(max, context->output.amount)) {
-            PRINTF("Using max\n");
-            memmove(context->output.amount, max, PARAMETER_LENGTH);
+        if (context->sweep_received) {
+            PRINTF("Using sweep_amount as out output\n");
+            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
+        } else if (superior(context->output.u.wrap_unwrap_amount, context->output.amount)) {
+            PRINTF("Using unwrap amount as out output\n");
+            memmove(context->output.amount, context->output.u.wrap_unwrap_amount, PARAMETER_LENGTH);
         }
     }
 

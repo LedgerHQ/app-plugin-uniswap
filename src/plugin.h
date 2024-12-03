@@ -251,6 +251,7 @@ typedef struct context_s {
     bool unwrap_sweep_received;
 
     uint16_t pay_portion_amount;
+    bool sweep_received;
     uint8_t sweep_amount[INT256_LENGTH];
 
     bool recipient_set;

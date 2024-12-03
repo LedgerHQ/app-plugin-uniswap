@@ -1038,9 +1038,13 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_SWEEP_TOKEN:
             PRINTF("Interpreting as INPUT_SWEEP_TOKEN\n");
-            if (!address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                                    &context->output,
-                                    false)) {
+            if (context->output.asset_type == ETH && allzeroes(msg->parameter, PARAMETER_LENGTH)) {
+                PRINTF("Sweeping ETH\n");
+            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                          &context->output,
+                                          false)) {
+                PRINTF("Sweeping token\n");
+            } else {
                 PRINTF("Received a sweep for an unknown token\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
             }
@@ -1060,6 +1064,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_SWEEP_AMOUNT:
             PRINTF("Interpreting as INPUT_SWEEP_AMOUNT\n");
+            context->sweep_received = true;
             memmove(context->sweep_amount, msg->parameter, PARAMETER_LENGTH);
 
             ++context->current_command;
