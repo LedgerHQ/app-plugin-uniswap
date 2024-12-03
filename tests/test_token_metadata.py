@@ -26,7 +26,16 @@ usdt_to_weth = [
                                    intermediate_tokens=[],
                                    out_token="c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
                                    amount_in=10000000000000000000,
-                                   amount_out=240000000000000000),
+                                   amount_out=240000000000000000,
+                                   recipient="0000000000000000000000000000000000000002"),
+]
+usdt_to_weth_self = [
+    crafter.craft_V2_SWAP_EXACT_IN(in_token="dac17f958d2ee523a2206206994597c13d831ec7",
+                                   intermediate_tokens=[],
+                                   out_token="c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                                   amount_in=10000000000000000000,
+                                   amount_out=240000000000000000,
+                                   recipient="0000000000000000000000000000000000000001"),
 ]
 
 eth_to_wojak = [
@@ -34,7 +43,7 @@ eth_to_wojak = [
 ] + weth_to_wojak
 
 usdt_to_eth = usdt_to_weth + [
-    crafter.craft_UNWRAP_WETH(amount=240000000000000000),
+    crafter.craft_UNWRAP_WETH(amount=240000000000000000, recipient="0000000000000000000000000000000000000001"),
 ]
 
 class TestTokenMetadata:
@@ -82,13 +91,13 @@ class TestTokenMetadata:
     def test_token_metadata_known_to_weth(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         uniswap_client.provide_token_metadata(tokens.USDT)
-        with uniswap_client.send_sign_request(usdt_to_weth):
+        with uniswap_client.send_sign_request(usdt_to_weth_self):
             navigation_helper.ui_validate()
 
 
     def test_token_metadata_unknown_to_weth(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(usdt_to_weth):
+        with uniswap_client.send_sign_request(usdt_to_weth_self):
             navigation_helper.ui_validate()
 
 

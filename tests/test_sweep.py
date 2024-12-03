@@ -73,14 +73,6 @@ class TestSweep:
             uniswap_client.send_sync_sign_request(usdt_to_wojak_exact_in_v3 + pay_portion + sweep)
         assert e.value.status == 0x6A80
 
-    def test_sweep_invalid_swap_recipient(self, uniswap_client):
-        uniswap_client.set_external_plugin()
-        uniswap_client.provide_token_metadata(tokens.USDT)
-        uniswap_client.provide_token_metadata(tokens.WOJAK)
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(usdt_to_wojak_exact_in_v3 + pay_portion + sweep)
-        assert e.value.status == 0x6A80
-
     def test_sweep_invalid_swap_token(self, uniswap_client):
         uniswap_client.set_external_plugin()
         uniswap_client.provide_token_metadata(tokens.USDT)
