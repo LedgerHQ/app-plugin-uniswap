@@ -136,7 +136,7 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         }
         if (superior(max, context->output.amount)) {
             PRINTF("Using max\n");
-            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
+            memmove(context->output.amount, max, PARAMETER_LENGTH);
         }
     }
 
