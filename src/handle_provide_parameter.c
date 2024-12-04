@@ -1038,12 +1038,22 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_SWEEP_TOKEN:
             PRINTF("Interpreting as INPUT_SWEEP_TOKEN\n");
-            if (context->output.asset_type == ETH && allzeroes(msg->parameter, PARAMETER_LENGTH)) {
-                PRINTF("Sweeping ETH\n");
+            if (context->input.asset_type == ETH && allzeroes(msg->parameter, PARAMETER_LENGTH)) {
+                PRINTF("Sweeping input ETH\n");
+                context->skip_sweep_once = true;
+                context->unwrap_sweep_received = true;
+            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                          &context->input,
+                                          false)) {
+                PRINTF("Sweeping input token\n");
+                context->skip_sweep_once = true;
+            } else if (context->output.asset_type == ETH &&
+                       allzeroes(msg->parameter, PARAMETER_LENGTH)) {
+                PRINTF("Sweeping output ETH\n");
             } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           &context->output,
                                           false)) {
-                PRINTF("Sweeping token\n");
+                PRINTF("Sweeping output token\n");
             } else {
                 PRINTF("Received a sweep for an unknown token\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -1053,19 +1063,24 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_SWEEP_RECIPIENT:
             PRINTF("Interpreting as INPUT_SWEEP_RECIPIENT\n");
             context->next_param = INPUT_SWEEP_AMOUNT;
-            if (!context->recipient_set || !is_router_address(context->recipient)) {
-                PRINTF("Received a sweep but the swap recipient was not the router\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            } else {
-                memmove(context->recipient,
-                        msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                        ADDRESS_LENGTH);
+            if (!context->skip_sweep_once) {
+                if (!context->recipient_set || !is_router_address(context->recipient)) {
+                    PRINTF("Received a sweep but the swap recipient was not the router\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                } else {
+                    memmove(context->recipient,
+                            msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                            ADDRESS_LENGTH);
+                }
             }
             break;
         case INPUT_SWEEP_AMOUNT:
             PRINTF("Interpreting as INPUT_SWEEP_AMOUNT\n");
-            context->sweep_received = true;
-            memmove(context->sweep_amount, msg->parameter, PARAMETER_LENGTH);
+            if (!context->skip_sweep_once) {
+                context->sweep_received = true;
+                memmove(context->sweep_amount, msg->parameter, PARAMETER_LENGTH);
+            }
+            context->skip_sweep_once = false;
 
             ++context->current_command;
             if (prepare_reading_next_input(context) != 0) {

@@ -37,9 +37,9 @@ sweep = [
                         recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D"),
 ]
 
-sweep_usdt = [
+sweep_weth = [
     crafter.craft_SWEEP(amount=2500000000000000000,
-                        token=tokens.USDT.address,
+                        token=tokens.WETH.address,
                         recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D"),
 ]
 
@@ -78,5 +78,5 @@ class TestSweep:
         uniswap_client.provide_token_metadata(tokens.USDT)
         uniswap_client.provide_token_metadata(tokens.WOJAK)
         with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(usdt_to_wojak_exact_in_v3 + pay_portion + sweep_usdt)
+            uniswap_client.send_sync_sign_request(usdt_to_wojak_exact_in_v3 + pay_portion + sweep_weth)
         assert e.value.status == 0x6A80
