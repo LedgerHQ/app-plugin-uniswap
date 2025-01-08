@@ -2,18 +2,8 @@
 #include "weth_token.h"
 #include "uniswap_contract_helpers.h"
 
-static bool inferior_or_equal(const uint8_t a[PARAMETER_LENGTH],
-                              const uint8_t b[PARAMETER_LENGTH]) {
-    return (memcmp(a, b, PARAMETER_LENGTH) <= 0);
-}
-
-static bool superior_or_equal(const uint8_t a[PARAMETER_LENGTH],
-                              const uint8_t b[PARAMETER_LENGTH]) {
-    return (memcmp(a, b, PARAMETER_LENGTH) >= 0);
-}
-
-static bool equal(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_LENGTH]) {
-    return (memcmp(a, b, PARAMETER_LENGTH) == 0);
+static bool superior(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_LENGTH]) {
+    return (memcmp(a, b, PARAMETER_LENGTH) > 0);
 }
 
 #define PRINT_PARAMETER(title, parameter)                \
@@ -24,71 +14,6 @@ static bool equal(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_L
         }                                                \
         PRINTF("\n");                                    \
     } while (0);
-
-/* Table of allowed WRAP / UNWRAP values
- * -------------------------------------------------------------------------------------------------
- * | WRAP / UNWRAP compared to amount: | INFERIOR                | EQUAL | SUPERIOR                |
- * -------------------------------------------------------------------------------------------------
- * | EXACT_IN:                         |                         |       |                         |
- * |    - WRAP: ETH -> WETH -> TOKEN   | KO (will fail on chain) | OK    | KO (waste)              |
- * |    - UNWRAP: TOKEN -> WETH -> ETH | OK (this is a min)      | OK    | KO (will fail on chain) |
- * -------------------------------------------------------------------------------------------------
- * | EXACT_OUT:                        |                         |       |                         |
- * |    - WRAP: ETH -> WETH -> TOKEN   | KO (will fail on chain) | OK    | OK (but sweep needed!)  |
- * |    - UNWRAP: TOKEN -> WETH -> ETH | OK (this is a min)      | OK    | KO (will fail on chain) |
- * -------------------------------------------------------------------------------------------------
- */
-static bool valid_wrap_unwrap_amounts(const context_t *context) {
-    bool sweep_expected = false;
-    if (context->swap_type == EXACT_IN) {
-        if (context->input.asset_type == ETH) {
-            if (!equal(context->input.u.wrap_unwrap_amount, context->input.amount)) {
-                PRINTF("Error: wrap amount is not equal to input\n");
-                PRINT_PARAMETER("context->input.u.wrap_unwrap_amount",
-                                context->input.u.wrap_unwrap_amount);
-                PRINT_PARAMETER("context->input.amount", context->input.amount);
-                return false;
-            }
-        } else if (context->output.asset_type == ETH) {
-            if (!inferior_or_equal(context->output.u.wrap_unwrap_amount, context->output.amount)) {
-                PRINTF("Error: unwrap amount is not inferior_or_equal to output\n");
-                PRINT_PARAMETER("context->output.u.wrap_unwrap_amount",
-                                context->output.u.wrap_unwrap_amount);
-                PRINT_PARAMETER("context->output.amount", context->output.amount);
-                return false;
-            }
-        }
-    } else {
-        if (context->input.asset_type == ETH) {
-            sweep_expected = true;
-            if (!superior_or_equal(context->input.u.wrap_unwrap_amount, context->input.amount)) {
-                PRINTF("Error: wrap amount is not superior_or_equal to input\n");
-                PRINT_PARAMETER("context->input.u.wrap_unwrap_amount",
-                                context->input.u.wrap_unwrap_amount);
-                PRINT_PARAMETER("context->input.amount", context->input.amount);
-                return false;
-            }
-        } else if (context->output.asset_type == ETH) {
-            if (!inferior_or_equal(context->output.u.wrap_unwrap_amount, context->output.amount)) {
-                PRINTF("Error: unwrap amount is not inferior_or_equal to output\n");
-                PRINT_PARAMETER("context->output.u.wrap_unwrap_amount",
-                                context->output.u.wrap_unwrap_amount);
-                PRINT_PARAMETER("context->output.amount", context->output.amount);
-                return false;
-            }
-        }
-    }
-
-    if (context->sweep_received && !sweep_expected) {
-        PRINTF("Error: sweep received out of context\n");
-        return false;
-    } else if (!context->sweep_received && sweep_expected) {
-        PRINTF("Error: missing sweep\n");
-        return false;
-    }
-
-    return true;
-}
 
 // Resolve token if possible, request otherwise
 static bool resolve_asset(io_data_t *io_data) {
@@ -154,11 +79,11 @@ void handle_finalize(ethPluginFinalize_t *msg) {
     }
 
     // This sweep was not just a sweep, it was the main uwrap
-    if (context->sweep_received && context->output.asset_type == WETH) {
+    if (context->unwrap_sweep_received && context->output.asset_type == WETH) {
         PRINTF("Sweep is actually the main unwrap\n");
         context->output.asset_type = ETH;
         memset(context->output.u.wrap_unwrap_amount, 0, PARAMETER_LENGTH);
-        context->sweep_received = false;
+        context->unwrap_sweep_received = false;
     }
 
     if (context->intermediate.intermediate_status != UNUSED) {
@@ -167,16 +92,45 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    if (!valid_wrap_unwrap_amounts(context)) {
-        PRINTF("Error: valid_wrap_unwrap_amounts failed\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
-        return;
+    if (msg->pluginSharedRO->txContent->value.length != 0) {
+        if (context->input.asset_type != ETH) {
+            PRINTF("Error: no native eth payment for token swap\n");
+            msg->result = ETH_PLUGIN_RESULT_ERROR;
+            return;
+        } else if (msg->pluginSharedRO->txContent->value.length > 32) {
+            PRINTF("Error: invalid value length\n");
+            msg->result = ETH_PLUGIN_RESULT_ERROR;
+            return;
+        } else {
+            uint8_t native_value[PARAMETER_LENGTH];
+            memset(native_value, 0, PARAMETER_LENGTH);
+            memmove(
+                native_value + (PARAMETER_LENGTH - msg->pluginSharedRO->txContent->value.length),
+                msg->pluginSharedRO->txContent->value.value,
+                msg->pluginSharedRO->txContent->value.length);
+            if (superior(native_value, context->input.amount)) {
+                PRINTF("Using native payment value instead\n");
+                memmove(context->input.amount, native_value, PARAMETER_LENGTH);
+                PRINTF("New in value %.*H\n", PARAMETER_LENGTH, context->input.amount);
+            }
+        }
     }
 
-    if (!valid_wrap_unwrap_amounts(context)) {
-        PRINTF("Error: valid_wrap_unwrap_amounts failed\n");
-        msg->result = ETH_PLUGIN_RESULT_ERROR;
-        return;
+    if (context->output.asset_type != ETH) {
+        if (context->sweep_received) {
+            PRINTF("Displaying sweep amount as output\n");
+            PRINTF("context->output.amount %.*H\n", PARAMETER_LENGTH, context->output.amount);
+            PRINTF("context->sweep_amount %.*H\n", PARAMETER_LENGTH, context->sweep_amount);
+            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
+        }
+    } else {
+        if (context->sweep_received) {
+            PRINTF("Using sweep_amount as out output\n");
+            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
+        } else if (superior(context->output.u.wrap_unwrap_amount, context->output.amount)) {
+            PRINTF("Using unwrap amount as out output\n");
+            memmove(context->output.amount, context->output.u.wrap_unwrap_amount, PARAMETER_LENGTH);
+        }
     }
 
     if (!is_sender_address(context->recipient, context->own_address)) {

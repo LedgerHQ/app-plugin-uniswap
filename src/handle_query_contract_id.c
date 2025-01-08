@@ -8,9 +8,9 @@ void handle_query_contract_id(ethQueryContractID_t *msg) {
 
     if (context->selectorIndex == EXECUTE) {
         if (context->swap_type == EXACT_IN) {
-            strlcpy(msg->version, "Swap EXACT IN", msg->versionLength);
+            strlcpy(msg->version, "Swap tokens", msg->versionLength);
         } else {
-            strlcpy(msg->version, "Swap EXACT OUT", msg->versionLength);
+            strlcpy(msg->version, "Swap tokens", msg->versionLength);
         }
         msg->result = ETH_PLUGIN_RESULT_OK;
     } else {

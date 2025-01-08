@@ -100,7 +100,6 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 PRINTF("Preparing to read V3_SWAP_EXACT_OUT\n");
                 context->next_param = INPUT_V3_SWAP_EXACT_OUT_LENGTH;
                 break;
-            case PERMIT2_TRANSFER_FROM:
             case PERMIT2_PERMIT_BATCH:
             case PERMIT2_TRANSFER_FROM_BATCH:
             case PERMIT2_PERMIT:
@@ -118,6 +117,10 @@ static uint8_t prepare_reading_next_input(context_t *context) {
             case PAY_PORTION:
                 PRINTF("Preparing to read PAY_PORTION\n");
                 context->next_param = INPUT_PAY_PORTION_LENGTH;
+                break;
+            case SWEEP:
+                PRINTF("Preparing to read SWEEP\n");
+                context->next_param = INPUT_SWEEP_LENGTH;
                 break;
             default:
                 PRINTF("Error: command %d not handled\n", current_command);
@@ -140,35 +143,28 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
         io_data = &context->input;
     }
 
-    if (allzeroes(parameter, PARAMETER_LENGTH) && direction == OUTPUT) {
-        PRINTF("Sweep received\n");
-        context->sweep_received = true;
+    PRINTF("io_data->asset_type %d\n", io_data->asset_type);
+    if (io_data->asset_type == UNSET) {
+        // Nothing received yet, we indicate we received data and set it's type as ETH
+        PRINTF("Setting %s to ETH\n", IO_NAME(direction));
+    } else if (io_data->asset_type == WETH) {
+        // We have already received a v2 or v3 swap with WETH as input or output, change it to
+        // ETH
+        PRINTF("Switching %s from WETH to ETH\n", IO_NAME(direction));
+    } else if (io_data->asset_type == ETH) {
+        // We received a previous wrap or unwrap request, refuse
+        PRINTF("Error: received a second %s command\n", WRAP_UNWRAP_NAME(direction));
+        return -1;
     } else {
-        PRINTF("io_data->asset_type %d\n", io_data->asset_type);
-        if (io_data->asset_type == UNSET) {
-            // Nothing received yet, we indicate we received data and set it's type as ETH
-            PRINTF("Setting %s to ETH\n", IO_NAME(direction));
-        } else if (io_data->asset_type == WETH) {
-            // We have already received a v2 or v3 swap with WETH as input or output, change it to
-            // ETH
-            PRINTF("Switching %s from WETH to ETH\n", IO_NAME(direction));
-        } else if (io_data->asset_type == ETH) {
-            // We received a previous wrap or unwrap request, refuse
-            PRINTF("Error: received a second %s command\n", WRAP_UNWRAP_NAME(direction));
-            return -1;
-        } else {
-            // We have already received a swap with some != WETH token, refuse
-            PRINTF("Error: received a %s command but %s is a token\n",
-                   WRAP_UNWRAP_NAME(direction),
-                   IO_NAME(direction));
-            return -1;
-        }
-        io_data->asset_type = ETH;
-        copy_parameter(io_data->u.wrap_unwrap_amount,
-                       parameter,
-                       sizeof(io_data->u.wrap_unwrap_amount));
-        PRINT_PARAMETER("io_data->u.wrap_unwrap_amount: ", io_data->u.wrap_unwrap_amount);
+        // We have already received a swap with some != WETH token, refuse
+        PRINTF("Error: received a %s command but %s is a token\n",
+               WRAP_UNWRAP_NAME(direction),
+               IO_NAME(direction));
+        return -1;
     }
+    io_data->asset_type = ETH;
+    copy_parameter(io_data->u.wrap_unwrap_amount, parameter, sizeof(io_data->u.wrap_unwrap_amount));
+    PRINT_PARAMETER("io_data->u.wrap_unwrap_amount: ", io_data->u.wrap_unwrap_amount);
 
     return 0;
 }
@@ -536,18 +532,20 @@ static int handle_recipient(const uint8_t parameter[PARAMETER_LENGTH], context_t
     PRINTF("handle_recipient\n");
     if (context->recipient_set) {
         if (memcmp(context->recipient,
-                   parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+                   parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                    ADDRESS_LENGTH) != 0) {
             PRINTF("Error: can't mix different recipients\n");
             PRINTF("Received: %.*H\n",
                    ADDRESS_LENGTH,
-                   parameter + PARAMETER_LENGTH - ADDRESS_LENGTH);
+                   parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH));
             PRINTF("Expected: %.*H\n", ADDRESS_LENGTH, context->recipient);
             return -1;
         }
     } else {
         context->recipient_set = true;
-        memmove(context->recipient, parameter + PARAMETER_LENGTH - ADDRESS_LENGTH, ADDRESS_LENGTH);
+        memmove(context->recipient,
+                parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                ADDRESS_LENGTH);
     }
     return 0;
 }
@@ -639,8 +637,8 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_WRAP_ETH_RECIPIENT:
             PRINTF("Interpreting as INPUT_WRAP_ETH_RECIPIENT\n");
             PRINTF("Checking WRAP recipient\n");
-            if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
-                if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
+            if (!is_router_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH))) {
+                if (!is_sender_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                        context->own_address)) {
                     PRINTF("Wrap recipient is not the router address or the sender\n");
                     if (handle_recipient(msg->parameter, context) != 0) {
@@ -674,25 +672,33 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_UNWRAP_WETH_RECIPIENT:
             PRINTF("Interpreting as INPUT_UNWRAP_WETH_RECIPIENT\n");
-            PRINTF("Checking UNWRAP recipient\n");
-            if (!is_router_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH)) {
-                if (!is_sender_address(msg->parameter + PARAMETER_LENGTH - ADDRESS_LENGTH,
-                                       context->own_address)) {
-                    PRINTF("Unwrap recipient is not the router address or the sender\n");
-                    if (handle_recipient(msg->parameter, context) != 0) {
-                        PRINTF("Error: handle_recipient failed\n");
-                        msg->result = ETH_PLUGIN_RESULT_ERROR;
-                    }
+            if (context->input.asset_type == ETH &&
+                is_sender_address(context->recipient, context->own_address)) {
+                // We are returning back to the user the unused amount of WETH
+                PRINTF("unwrap sweep received\n");
+                context->unwrap_sweep_received = true;
+            } else {
+                PRINTF("Checking UNWRAP recipient\n");
+                if (!context->recipient_set || !is_router_address(context->recipient)) {
+                    PRINTF("Received a final unwrap but the swap recipient was not the router\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                } else {
+                    PRINTF("Override recipient\n");
+                    memmove(context->recipient,
+                            msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                            ADDRESS_LENGTH);
                 }
             }
             context->next_param = INPUT_UNWRAP_WETH_AMOUNT;
             break;
         case INPUT_UNWRAP_WETH_AMOUNT:
             PRINTF("Interpreting as INPUT_UNWRAP_WETH_AMOUNT\n");
-            if (add_wrap_or_unwrap(msg->parameter, context, OUTPUT) != 0) {
-                PRINTF("Error in add_wrap_or_unwrap for output\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-                break;
+            if (context->input.asset_type != ETH) {
+                if (add_wrap_or_unwrap(msg->parameter, context, OUTPUT) != 0) {
+                    PRINTF("Error in add_wrap_or_unwrap for output\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    break;
+                }
             }
 
             ++context->current_command;
@@ -1022,9 +1028,73 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
         } break;
 
+            // ###################
+            // Parsing SWEEP
+            // ###################
+
+        case INPUT_SWEEP_LENGTH:
+            PRINTF("Interpreting as INPUT_SWEEP_LENGTH\n");
+            context->next_param = INPUT_SWEEP_TOKEN;
+            break;
+        case INPUT_SWEEP_TOKEN:
+            PRINTF("Interpreting as INPUT_SWEEP_TOKEN\n");
+            if (context->input.asset_type == ETH && allzeroes(msg->parameter, PARAMETER_LENGTH)) {
+                PRINTF("Sweeping input ETH\n");
+                context->skip_sweep_once = true;
+                context->unwrap_sweep_received = true;
+            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                          &context->input,
+                                          false)) {
+                PRINTF("Sweeping input token\n");
+                context->skip_sweep_once = true;
+            } else if (context->output.asset_type == ETH &&
+                       allzeroes(msg->parameter, PARAMETER_LENGTH)) {
+                PRINTF("Sweeping output ETH\n");
+            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                          &context->output,
+                                          false)) {
+                PRINTF("Sweeping output token\n");
+            } else {
+                PRINTF("Received a sweep for an unknown token\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
+            context->next_param = INPUT_SWEEP_RECIPIENT;
+            break;
+        case INPUT_SWEEP_RECIPIENT:
+            PRINTF("Interpreting as INPUT_SWEEP_RECIPIENT\n");
+            context->next_param = INPUT_SWEEP_AMOUNT;
+            if (!context->skip_sweep_once) {
+                if (!context->recipient_set || !is_router_address(context->recipient)) {
+                    PRINTF("Received a sweep but the swap recipient was not the router\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                } else {
+                    memmove(context->recipient,
+                            msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                            ADDRESS_LENGTH);
+                }
+            }
+            break;
+        case INPUT_SWEEP_AMOUNT:
+            PRINTF("Interpreting as INPUT_SWEEP_AMOUNT\n");
+            if (!context->skip_sweep_once) {
+                context->sweep_received = true;
+                memmove(context->sweep_amount, msg->parameter, PARAMETER_LENGTH);
+            }
+            context->skip_sweep_once = false;
+
+            ++context->current_command;
+            if (prepare_reading_next_input(context) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
+            break;
+
             // ###
             // END
             // ###
+
+        case UNEXPECTED_PARAMETER:
+            PRINTF("Unexpected parameter: drop it\n");
+            break;
 
         default:
             PRINTF("Param not supported: %d\n", context->next_param);

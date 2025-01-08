@@ -28,20 +28,55 @@ from_weth_exact_out = [
                                     amount_out=1000000000000000000),
 ]
 
-to_weth_exact_in = [
+to_weth_exact_in_self = [
     crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
                                    intermediate_tokens=[],
                                    out_token=tokens.WETH.address,
                                    amount_in=10000000000000000000,
-                                   amount_out=AMOUNT_STANDARD),
+                                   amount_out=AMOUNT_STANDARD,
+                                   recipient="0000000000000000000000000000000000000001"),
+]
+to_weth_exact_in_router = [
+    crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
+                                   intermediate_tokens=[],
+                                   out_token=tokens.WETH.address,
+                                   amount_in=10000000000000000000,
+                                   amount_out=AMOUNT_STANDARD,
+                                   recipient="0000000000000000000000000000000000000002"),
+]
+to_weth_exact_in_third = [
+    crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
+                                   intermediate_tokens=[],
+                                   out_token=tokens.WETH.address,
+                                   amount_in=10000000000000000000,
+                                   amount_out=AMOUNT_STANDARD,
+                                   recipient="00000000000000000000000000000000000ABCDE"),
 ]
 
-to_weth_exact_out = [
+
+to_weth_exact_out_self = [
     crafter.craft_V2_SWAP_EXACT_OUT(in_token=tokens.USDT.address,
                                     intermediate_tokens=[],
                                     out_token=tokens.WETH.address,
                                     amount_in=10000000000000000000,
-                                    amount_out=AMOUNT_STANDARD),
+                                    amount_out=AMOUNT_STANDARD,
+                                    recipient="0000000000000000000000000000000000000001"),
+]
+to_weth_exact_out_router = [
+    crafter.craft_V2_SWAP_EXACT_OUT(in_token=tokens.USDT.address,
+                                    intermediate_tokens=[],
+                                    out_token=tokens.WETH.address,
+                                    amount_in=10000000000000000000,
+                                    amount_out=AMOUNT_STANDARD,
+                                    recipient="0000000000000000000000000000000000000002"),
+]
+to_weth_exact_out_third = [
+    crafter.craft_V2_SWAP_EXACT_OUT(in_token=tokens.USDT.address,
+                                    intermediate_tokens=[],
+                                    out_token=tokens.WETH.address,
+                                    amount_in=10000000000000000000,
+                                    amount_out=AMOUNT_STANDARD,
+                                    recipient="00000000000000000000000000000000000ABCDE"),
 ]
 
 wrap_less = [
@@ -62,6 +97,15 @@ unwrap_less = [
 ]
 unwrap = [
     crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD),
+]
+unwrap_to_self_1 = [
+    crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000001"),
+]
+unwrap_to_self_2 = [
+    crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D"),
+]
+unwrap_to_third = [
+    crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="00000000000000000000000000000000000ABCDE"),
 ]
 unwrap_more = [
     crafter.craft_UNWRAP_WETH(amount=AMOUNT_MORE),
@@ -91,13 +135,13 @@ class TestWrapUnwrap:
     def test_invalid_wrap_ordered(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(wrap + to_weth_exact_in)
+            uniswap_client.send_sync_sign_request(wrap + to_weth_exact_in_self)
         assert e.value.status == 0x6A80
 
     def test_invalid_wrap_unordered(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(to_weth_exact_in + wrap)
+            uniswap_client.send_sync_sign_request(to_weth_exact_in_self + wrap)
         assert e.value.status == 0x6A80
 
     ###############
@@ -108,13 +152,24 @@ class TestWrapUnwrap:
 
     def test_valid_unwrap_ordered(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_in + unwrap):
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + unwrap_to_self_1):
             navigation_helper.ui_validate()
 
-    def test_valid_unwrap_unordered(self, uniswap_client, navigation_helper):
+    def test_valid_unwrap_ordered_2(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(unwrap + to_weth_exact_in):
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + unwrap_to_self_2):
             navigation_helper.ui_validate()
+
+    def test_valid_unwrap_ordered_to_third(self, uniswap_client, navigation_helper):
+        uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + unwrap_to_third):
+            navigation_helper.ui_validate()
+
+    def test_invalid_unwrap_unordered(self, uniswap_client, navigation_helper):
+        uniswap_client.set_external_plugin()
+        with pytest.raises(ExceptionRAPDU) as e:
+            uniswap_client.send_async_sign_request(unwrap + to_weth_exact_in_self)
+        assert e.value.status == 0x6A80
 
     # Can't unwrap a WETH input #
 
@@ -152,58 +207,37 @@ class TestWrapUnwrap:
 
     # Exact IN #
 
-    def test_invalid_exact_in_wrap_less(self, uniswap_client, navigation_helper):
+    def test_valid_exact_in_wrap_less(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(wrap_less + from_weth_exact_in)
-        assert e.value.status == 0x6A80
+        with uniswap_client.send_sign_request(wrap_less + from_weth_exact_in):
+            navigation_helper.ui_validate()
 
-    def test_invalid_exact_in_wrap_more(self, uniswap_client, navigation_helper):
+    def test_valid_exact_in_wrap_more(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(wrap_more + from_weth_exact_in)
-        assert e.value.status == 0x6A80
+        with uniswap_client.send_sign_request(wrap_more + from_weth_exact_in):
+            navigation_helper.ui_validate()
 
     def test_valid_unexact_in_wrap_weth_less(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_in + unwrap_less):
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + unwrap_less):
             navigation_helper.ui_validate()
-
-    def test_invalid_exact_in_unwrap_more(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(to_weth_exact_in + unwrap_more)
-        assert e.value.status == 0x6A80
 
     # Exact OUT #
 
-    def test_invalid_exact_out_wrap_less(self, uniswap_client, navigation_helper):
+    def test_valid_exact_out_wrap_less(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(wrap_less + from_weth_exact_out)
-        assert e.value.status == 0x6A80
-
-    def test_invalid_exact_out_wrap_more_no_sweep(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(wrap_more + from_weth_exact_out)
-        assert e.value.status == 0x6A80
-
-    def test_valid_exact_out_wrap_more_with_sweep(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(wrap_more + from_weth_exact_out + unwrap_zero):
+        with uniswap_client.send_sign_request(wrap_less + from_weth_exact_out):
             navigation_helper.ui_validate()
 
     def test_valid_unexact_out_unwrap_less(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_out + unwrap_zero):
+        with uniswap_client.send_sign_request(to_weth_exact_out_router + unwrap_zero):
             navigation_helper.ui_validate()
 
-    def test_invalid_exact_out_unwrap_more(self, uniswap_client, navigation_helper):
+    def test_valid_exact_out_unwrap_more(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(to_weth_exact_out + unwrap_more)
-        assert e.value.status == 0x6A80
+        with uniswap_client.send_sign_request(to_weth_exact_out_router + unwrap_more):
+            navigation_helper.ui_validate()
 
     #################################
     # Test WRAP or UNWRAP recipient #
@@ -212,41 +246,40 @@ class TestWrapUnwrap:
     def test_invalid_wrap_recipient_is_unknown(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         with pytest.raises(ExceptionRAPDU) as e:
-            uniswap_client.send_sync_sign_request(to_weth_exact_in + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="1230000000000000000000000000000000000001")])
-        assert e.value.status == 0x6A80
-
-    def test_invalid_unwrap_recipient_is_unknown(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with pytest.raises(ExceptionRAPDU) as e:
             uniswap_client.send_sync_sign_request([crafter.craft_WRAP_ETH(amount=AMOUNT_STANDARD, recipient="1230000000000000000000000000000000000001")] + from_weth_exact_in)
         assert e.value.status == 0x6A80
 
-    def test_valid_wrap_recipient_is_router(self, uniswap_client, navigation_helper):
+    def test_valid_unwrap_recipient_is_unknown(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_in + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000002")]):
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="1230000000000000000000000000000000000001")]):
             navigation_helper.ui_validate()
 
     def test_valid_unwrap_recipient_is_router(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000002")]):
+            navigation_helper.ui_validate()
+
+    def test_valid_wrap_recipient_is_router(self, uniswap_client, navigation_helper):
+        uniswap_client.set_external_plugin()
         with uniswap_client.send_sign_request([crafter.craft_WRAP_ETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000002")] + from_weth_exact_in):
             navigation_helper.ui_validate()
 
-    def test_valid_wrap_recipient_is_self_1(self, uniswap_client, navigation_helper):
+    def test_valid_unwrap_recipient_is_self_1(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_in + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000001")]):
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000001")]):
             navigation_helper.ui_validate()
 
-    def test_valid_unwrap_recipient_is_self_1(self, uniswap_client, navigation_helper):
+    def test_valid_unwrap_recipient_is_self_2(self, uniswap_client, navigation_helper):
+        uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(to_weth_exact_in_router + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D")]):
+            navigation_helper.ui_validate()
+
+    def test_valid_wrap_recipient_is_self_1(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         with uniswap_client.send_sign_request([crafter.craft_WRAP_ETH(amount=AMOUNT_STANDARD, recipient="0000000000000000000000000000000000000001")] + from_weth_exact_in):
             navigation_helper.ui_validate()
 
     def test_valid_wrap_recipient_is_self_2(self, uniswap_client, navigation_helper):
-        uniswap_client.set_external_plugin()
-        with uniswap_client.send_sign_request(to_weth_exact_in + [crafter.craft_UNWRAP_WETH(amount=AMOUNT_STANDARD, recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D")]):
-            navigation_helper.ui_validate()
-
-    def test_valid_unwrap_recipient_is_self_2(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         with uniswap_client.send_sign_request([crafter.craft_WRAP_ETH(amount=AMOUNT_STANDARD, recipient="Dad77910DbDFdE764fC21FCD4E74D71bBACA6D8D")] + from_weth_exact_in):
             navigation_helper.ui_validate()

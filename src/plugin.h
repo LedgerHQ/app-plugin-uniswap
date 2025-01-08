@@ -63,7 +63,7 @@ typedef enum parameter_e {
     INPUT_UNWRAP_WETH_RECIPIENT,
     INPUT_UNWRAP_WETH_AMOUNT,
 
-    // Parsing UNWRAP_WETH
+    // Parsing PAY_PORTION
     INPUT_PAY_PORTION_LENGTH,
     INPUT_PAY_PORTION_TOKEN,
     INPUT_PAY_PORTION_RECIPIENT,
@@ -112,6 +112,12 @@ typedef enum parameter_e {
     INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER,
     INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH,
     INPUT_V3_SWAP_EXACT_OUT_PATH,
+
+    // Parsing SWEEP
+    INPUT_SWEEP_LENGTH,
+    INPUT_SWEEP_TOKEN,
+    INPUT_SWEEP_RECIPIENT,
+    INPUT_SWEEP_AMOUNT,
 
     UNEXPECTED_PARAMETER,
 } parameter_t;
@@ -242,9 +248,12 @@ typedef struct context_s {
     // The data for the output of the swap
     io_data_t output;
 
-    bool sweep_received;
+    bool unwrap_sweep_received;
 
     uint16_t pay_portion_amount;
+    bool sweep_received;
+    bool skip_sweep_once;
+    uint8_t sweep_amount[INT256_LENGTH];
 
     bool recipient_set;
     uint8_t recipient[ADDRESS_LENGTH];

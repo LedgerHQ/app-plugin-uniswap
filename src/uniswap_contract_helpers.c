@@ -31,6 +31,19 @@ bool is_router_address(const uint8_t address[ADDRESS_LENGTH]) {
     return (address[ADDRESS_LENGTH - 1] == 2);
 }
 
+// Check if amount is 8000000000000000000000000000000000000000000000000000000000000000
+bool is_contract_balance(const uint8_t amount[PARAMETER_LENGTH]) {
+    if (amount[0] != 0x80) {
+        return false;
+    }
+    for (uint8_t i = 1; i < PARAMETER_LENGTH; ++i) {
+        if (amount[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Derive our key on the derivation path and save our address in the context
 int get_self_address(uint8_t address[ADDRESS_LENGTH], bip32_path_t *bip32) {
     PRINTF("bip32_path = %.*H\n", bip32->length * 4, bip32->path);

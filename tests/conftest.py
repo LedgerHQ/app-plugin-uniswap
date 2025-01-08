@@ -27,12 +27,12 @@ def wallet_addr(backend):
     return WalletAddr(backend)
 
 from .abi_reader import read_uniswap_contract_data
-@pytest.fixture(scope="session")
+@pytest.fixture(scope=configuration.OPTIONAL.BACKEND_SCOPE)
 def uniswap_contract_data():
     return read_uniswap_contract_data()
 
 from .uniswap_client import UniswapClient
-@pytest.fixture(scope="session")
+@pytest.fixture(scope=configuration.OPTIONAL.BACKEND_SCOPE)
 def uniswap_client(backend, uniswap_contract_data):
     return UniswapClient(backend, uniswap_contract_data)
 
