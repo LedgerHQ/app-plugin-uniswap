@@ -174,7 +174,7 @@ void handle_query_contract_ui(ethQueryContractUI_t *msg) {
             // Recipient screen is 5th if applicable, else pay portion if applicable
             if (has_recipient_screen) {
                 ret = recipient_screen(msg, context);
-            } else if (context->pay_portion_amount != 0) {
+            } else if (context->pay_portion_amount > 200) {
                 ret = pay_portion(msg, context);
             } else {
                 PRINTF("Received an invalid index %d (%d)\n", msg->screenIndex, index);

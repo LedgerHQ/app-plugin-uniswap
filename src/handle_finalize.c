@@ -138,9 +138,11 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         ++msg->numScreens;
     }
 
-    if (context->pay_portion_amount != 0) {
-        PRINTF("Displaying pay portion\n");
+    if (context->pay_portion_amount > 200) {
+        PRINTF("Displaying pay portion %d\n", context->pay_portion_amount);
         ++msg->numScreens;
+    } else {
+        PRINTF("Skip low pay portion %d\n", context->pay_portion_amount);
     }
 
     // Resolve IOs if possible, request otherwise
