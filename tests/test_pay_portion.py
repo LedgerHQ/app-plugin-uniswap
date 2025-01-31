@@ -122,6 +122,43 @@ class TestPayPortion:
         with uniswap_client.send_sign_request(usdt_to_wojak_exact_in_v2 + pay_portion + pay_portion):
             navigation_helper.ui_validate()
 
+    def test_valid_pay_portion_above_threshold(self, uniswap_client, navigation_helper):
+        usdt_to_wojak_exact_in_v2 = [
+            crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
+                                           intermediate_tokens=[],
+                                           out_token=tokens.WOJAK.address,
+                                           amount_in=240000000000000000,
+                                           amount_out=1000000000000000000),
+        ]
+        pay_portion = [
+            crafter.craft_PAY_PORTION(token=tokens.USDT.address,
+                                      recipient="0000000000000000000000000000000000000002",
+                                      amount=201),
+        ]
+
+        uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(usdt_to_wojak_exact_in_v2 + pay_portion):
+            navigation_helper.ui_validate()
+
+    @pytest.mark.parametrize('pay_portion_amount', [1, 200])
+    def test_valid_pay_portion_under_threshold(self, uniswap_client, navigation_helper, pay_portion_amount):
+        usdt_to_wojak_exact_in_v2 = [
+            crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
+                                           intermediate_tokens=[],
+                                           out_token=tokens.WOJAK.address,
+                                           amount_in=240000000000000000,
+                                           amount_out=1000000000000000000),
+        ]
+        pay_portion = [
+            crafter.craft_PAY_PORTION(token=tokens.USDT.address,
+                                      recipient="0000000000000000000000000000000000000002",
+                                      amount=pay_portion_amount),
+        ]
+
+        uniswap_client.set_external_plugin()
+        with uniswap_client.send_sign_request(usdt_to_wojak_exact_in_v2 + pay_portion):
+            navigation_helper.ui_validate()
+
     def test_invalid_pay_portion_sum_overflow(self, uniswap_client, navigation_helper):
         usdt_to_wojak_exact_in_v2 = [
             crafter.craft_V2_SWAP_EXACT_IN(in_token=tokens.USDT.address,
