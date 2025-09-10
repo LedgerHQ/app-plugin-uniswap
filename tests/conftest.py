@@ -38,5 +38,5 @@ def uniswap_client(backend, uniswap_contract_data):
 
 from .navigation_helper import NavigationHelper
 @pytest.fixture(scope="function")
-def navigation_helper(navigator, firmware, test_name):
-    return NavigationHelper(navigator, firmware, test_name)
+def navigation_helper(navigator, backend, test_name):
+    return NavigationHelper(navigator, backend, test_name)
