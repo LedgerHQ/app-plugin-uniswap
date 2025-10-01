@@ -37,16 +37,19 @@ class TestRecipients:
 
     def test_recipient_is_not_self(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(weth_to_wojak_recipient_1):
             navigation_helper.ui_validate()
 
     def test_invalid_mismatch_recipient(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with pytest.raises(ExceptionRAPDU) as e:
             uniswap_client.send_sync_sign_request(weth_to_wojak_recipient_1 + weth_to_wojak_recipient_2)
         assert e.value.status == 0x6A80
 
     def test_valid_recipient_is_self_address(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(weth_to_wojak_recipient_self):
             navigation_helper.ui_validate()

@@ -77,6 +77,7 @@ class TestTokenMetadata:
 
     def test_token_metadata_weth_to_known(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         uniswap_client.provide_token_metadata(tokens.WOJAK)
         with uniswap_client.send_sign_request(weth_to_wojak):
             navigation_helper.ui_validate()
@@ -84,6 +85,7 @@ class TestTokenMetadata:
 
     def test_token_metadata_weth_to_unknown(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(weth_to_wojak):
             navigation_helper.ui_validate()
 
@@ -91,12 +93,14 @@ class TestTokenMetadata:
     def test_token_metadata_known_to_weth(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
         uniswap_client.provide_token_metadata(tokens.USDT)
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(usdt_to_weth_self):
             navigation_helper.ui_validate()
 
 
     def test_token_metadata_unknown_to_weth(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(usdt_to_weth_self):
             navigation_helper.ui_validate()
 

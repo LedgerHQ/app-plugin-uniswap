@@ -64,6 +64,7 @@ class TestPayPortion:
         ]
 
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(weth_to_wojak_recipient_1 + pay_portion):
             navigation_helper.ui_validate()
 
