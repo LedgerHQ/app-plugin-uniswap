@@ -92,22 +92,21 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    if (msg->pluginSharedRO->txContent->value.length != 0) {
+    if (msg->txContent->value.length != 0) {
         if (context->input.asset_type != ETH) {
             PRINTF("Error: no native eth payment for token swap\n");
             msg->result = ETH_PLUGIN_RESULT_ERROR;
             return;
-        } else if (msg->pluginSharedRO->txContent->value.length > 32) {
+        } else if (msg->txContent->value.length > 32) {
             PRINTF("Error: invalid value length\n");
             msg->result = ETH_PLUGIN_RESULT_ERROR;
             return;
         } else {
             uint8_t native_value[PARAMETER_LENGTH];
             memset(native_value, 0, PARAMETER_LENGTH);
-            memmove(
-                native_value + (PARAMETER_LENGTH - msg->pluginSharedRO->txContent->value.length),
-                msg->pluginSharedRO->txContent->value.value,
-                msg->pluginSharedRO->txContent->value.length);
+            memmove(native_value + (PARAMETER_LENGTH - msg->txContent->value.length),
+                    msg->txContent->value.value,
+                    msg->txContent->value.length);
             if (superior(native_value, context->input.amount)) {
                 PRINTF("Using native payment value instead\n");
                 memmove(context->input.amount, native_value, PARAMETER_LENGTH);
