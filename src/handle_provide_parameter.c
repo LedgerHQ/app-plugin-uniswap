@@ -188,10 +188,7 @@ static bool address_partially_matches_io(const uint8_t *address,
         return false;
     }
     
-    // ETH is native and doesn't have a token address for comparison
-    if (io->asset_type == ETH) {
-        // ETH can only match if accept_eth is true and we're not trying to compare addresses
-        // Since ETH has no address, we return false for address comparisons
+    if (io->asset_type == ETH && !accept_eth) {
         return false;
     }
 
