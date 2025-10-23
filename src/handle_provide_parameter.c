@@ -187,7 +187,7 @@ static bool address_partially_matches_io(const uint8_t *address,
     if (io->asset_type == UNSET) {
         return false;
     }
-    
+
     if (io->asset_type == ETH && !accept_eth) {
         return false;
     }
