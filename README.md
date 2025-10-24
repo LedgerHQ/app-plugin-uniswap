@@ -4,19 +4,9 @@
 
 # app-plugin-uniswap
 
-This repo is meant to be a forkable example of a plugin.
+This is the plugin to clear sign uniswap smart contract on Ledger device.
 
-Plugins are lightweight applications that go hand-in-hand with the Ethereum
-Application on a Nano (S, S plus, X), Stax and Flex devices.
-
-They allow users to safely interact with smart contracts by parsing the
-transaction data and displaying its content in a human-readable way. This is
-done on a "per contract" basis, meaning a plugin is required for every DApp.
-
-The code has been commented, and special "EDIT THIS" comments indicate where
-developers are expected to adapt the code to their own needs.
-
-It is STRONGLY recommended to follow the
+The plugin guide documentation gives more context about how ethereum plugins work.
 [plugin guide](https://developers.ledger.com/docs/dapp/embedded-plugin/code-overview/)
 in order to better understand the flow and the context for plugins.
 
@@ -33,8 +23,4 @@ the code is compiled and tested on the latest version of the SDK.
 
 ## Documentation
 
-The documentation about the plugin shall be added in [PLUGIN_SPECIFICATON.md](https://github.com/LedgerHQ/app-plugin-uniswap/blob/develop/PLUGIN_SPECIFICATION.md). It shall includes at least the smart contracts and functions supported by the plugin.
-
-## Formatting
-
-The C source code is expected to be formatted with `clang-format` 11.0.0 or higher.
+The documentation about the features of this plugin is located here [PLUGIN_SPECIFICATON.md](https://github.com/LedgerHQ/app-plugin-uniswap/blob/develop/PLUGIN_SPECIFICATION.md).

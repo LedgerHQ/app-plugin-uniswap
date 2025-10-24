@@ -9,11 +9,14 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
     // Make sure we are running a compatible version.
     if (msg->interfaceVersion != ETH_PLUGIN_INTERFACE_VERSION_LATEST) {
         // If not the case, return the `UNAVAILABLE` status.
+        PRINTF("Received interface version msg->interfaceVersion, expected %d\n",
+               msg->interfaceVersion,
+               ETH_PLUGIN_INTERFACE_VERSION_LATEST);
         msg->result = ETH_PLUGIN_RESULT_UNAVAILABLE;
         return;
     }
 
-    if (!check_tx_content(msg->pluginSharedRO->txContent)) {
+    if (!check_tx_content(msg->txContent)) {
         PRINTF("Error in check_tx_content\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
@@ -22,7 +25,9 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
     // Double check that the `context_t` struct is not bigger than the maximum size (defined by
     // `msg->pluginContextLength`).
     if (msg->pluginContextLength < sizeof(context_t)) {
-        PRINTF("Plugin parameters structure is bigger than allowed size\n");
+        PRINTF("Plugin parameters structure size %d is bigger than allowed size %d\n",
+               sizeof(context_t),
+               msg->pluginContextLength);
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
     }
