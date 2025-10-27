@@ -20,7 +20,7 @@ For the smart contracts implemented, the functions covered by the plugin shall b
 
 ## COMMANDS supported
 
-Subset of commands from:
+Subset of commands from Universal Router v2.0:
 https://docs.uniswap.org/contracts/universal-router/technical-reference#command-inputs
 
 | Command |

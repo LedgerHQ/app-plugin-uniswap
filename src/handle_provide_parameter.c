@@ -52,27 +52,14 @@ typedef enum command_type_e {
     PERMIT2_TRANSFER_FROM_BATCH = 0x0d,
     BALANCE_CHECK_ERC20 = 0x0e,
 
-    // NFT-related command types
-    SEAPORT = 0x10,
-    LOOKS_RARE_721 = 0x11,
-    NFTX = 0x12,
-    CRYPTOPUNKS = 0x13,
-    LOOKS_RARE_1155 = 0x14,
-    OWNER_CHECK_721 = 0x15,
-    OWNER_CHECK_1155 = 0x16,
-    SWEEP_ERC721 = 0x17,
+    // Universal Router v2.0 new commands
+    V4_SWAP = 0x10,
+    V3_POSITION_MANAGER_PERMIT = 0x11,
+    V3_POSITION_MANAGER_CALL = 0x12,
+    V4_INITIALIZE_POOL = 0x13,
+    V4_POSITION_MANAGER_CALL = 0x14,
 
-    X2Y2_721 = 0x18,
-    SUDOSWAP = 0x19,
-    NFT20 = 0x1a,
-    X2Y2_1155 = 0x1b,
-    FOUNDATION = 0x1c,
-    SWEEP_ERC1155 = 0x1d,
-    ELEMENT_MARKET = 0x1e,
-
-    EXECUTE_SUB_PLAN = 0x20,
-    SEAPORT_V1_4 = 0x21,
-    APPROVE_ERC20 = 0x22,
+    EXECUTE_SUB_PLAN = 0x21,
 } command_type_t;
 
 static uint8_t prepare_reading_next_input(context_t *context) {
