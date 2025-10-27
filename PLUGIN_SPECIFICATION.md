@@ -8,7 +8,7 @@ This documentation describes the smart contracts and functions supported by the 
 
 |  Network | Version | Smart Contract | Address |
 |   ----   |   ---   |      ----      |   ---   |
-| NetworkName   | VX  | Uniswap  | `0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD` |
+| NetworkName   | V2.0  | Uniswap  | `0x66a9893cc07d91d95644aedd05d03f95e1dba8af` |
 
 ## Functions
 
