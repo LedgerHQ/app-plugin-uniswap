@@ -36,6 +36,7 @@ static int add_parameters(uint8_t dest[PARAMETER_LENGTH], const uint8_t to_add[P
 }
 
 typedef enum command_type_e {
+    // First Block (0x00-0x07) - Complete from Commands.sol
     V3_SWAP_EXACT_IN = 0x00,
     V3_SWAP_EXACT_OUT = 0x01,
     PERMIT2_TRANSFER_FROM = 0x02,
@@ -44,6 +45,7 @@ typedef enum command_type_e {
     TRANSFER = 0x05,
     PAY_PORTION = 0x06,
 
+    // Second Block (0x08-0x0f) - Complete from Commands.sol  
     V2_SWAP_EXACT_IN = 0x08,
     V2_SWAP_EXACT_OUT = 0x09,
     PERMIT2_PERMIT = 0x0a,
@@ -52,27 +54,15 @@ typedef enum command_type_e {
     PERMIT2_TRANSFER_FROM_BATCH = 0x0d,
     BALANCE_CHECK_ERC20 = 0x0e,
 
-    // NFT-related command types
-    SEAPORT = 0x10,
-    LOOKS_RARE_721 = 0x11,
-    NFTX = 0x12,
-    CRYPTOPUNKS = 0x13,
-    LOOKS_RARE_1155 = 0x14,
-    OWNER_CHECK_721 = 0x15,
-    OWNER_CHECK_1155 = 0x16,
-    SWEEP_ERC721 = 0x17,
+    // Third Block (0x10-0x20) - V4 and Position Manager commands
+    V4_SWAP = 0x10,
+    V3_POSITION_MANAGER_PERMIT = 0x11,
+    V3_POSITION_MANAGER_CALL = 0x12,
+    V4_INITIALIZE_POOL = 0x13,
+    V4_POSITION_MANAGER_CALL = 0x14,
 
-    X2Y2_721 = 0x18,
-    SUDOSWAP = 0x19,
-    NFT20 = 0x1a,
-    X2Y2_1155 = 0x1b,
-    FOUNDATION = 0x1c,
-    SWEEP_ERC1155 = 0x1d,
-    ELEMENT_MARKET = 0x1e,
-
-    EXECUTE_SUB_PLAN = 0x20,
-    SEAPORT_V1_4 = 0x21,
-    APPROVE_ERC20 = 0x22,
+    // Fourth Block (0x21-0x3f) - Sub-plan execution
+    EXECUTE_SUB_PLAN = 0x21,
 } command_type_t;
 
 static uint8_t prepare_reading_next_input(context_t *context) {
@@ -121,6 +111,10 @@ static uint8_t prepare_reading_next_input(context_t *context) {
             case SWEEP:
                 PRINTF("Preparing to read SWEEP\n");
                 context->next_param = INPUT_SWEEP_LENGTH;
+                break;
+            case V4_SWAP:
+                PRINTF("Preparing to read V4_SWAP\n");
+                context->next_param = INPUT_V4_SWAP_LENGTH;
                 break;
             default:
                 PRINTF("Error: command %d not handled\n", current_command);
@@ -243,6 +237,19 @@ static bool address_matches_intermediate(const uint8_t address[ADDRESS_LENGTH],
                                                   address_direction,
                                                   0,
                                                   ADDRESS_LENGTH);
+}
+
+static int handle_v4_currency(context_t *context,
+                              uint8_t address[ADDRESS_LENGTH],
+                              io_type_t direction) {
+    PRINTF("Handling V4 currency for %s\n", IO_NAME(direction));
+    
+    // Determine which io_data to use based on direction
+    io_data_t *this_io = (direction == INPUT) ? &context->input : &context->output;
+    io_data_t *opposite_io = (direction == INPUT) ? &context->output : &context->input;
+    
+    // Handle V4 currency using existing address reception logic
+    return handle_address_reception(address, this_io, opposite_io, &context->intermediate, direction);
 }
 
 static int handle_address_reception(uint8_t address[ADDRESS_LENGTH],
@@ -1085,6 +1092,85 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             ++context->current_command;
             if (prepare_reading_next_input(context) != 0) {
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
+            }
+            break;
+
+            // ##################
+            // Parsing V4_SWAP
+            // ##################
+
+        case INPUT_V4_SWAP_LENGTH:
+            PRINTF("Interpreting as INPUT_V4_SWAP_LENGTH\n");
+            context->next_param = INPUT_V4_SWAP_POOL_KEY_OFFSET;
+            break;
+        case INPUT_V4_SWAP_POOL_KEY_OFFSET:
+            PRINTF("Interpreting as INPUT_V4_SWAP_POOL_KEY_OFFSET\n");
+            context->next_param = INPUT_V4_SWAP_SWAP_PARAMS_OFFSET;
+            break;
+        case INPUT_V4_SWAP_SWAP_PARAMS_OFFSET:
+            PRINTF("Interpreting as INPUT_V4_SWAP_SWAP_PARAMS_OFFSET\n");
+            context->next_param = INPUT_V4_SWAP_SETTLE_USING_BURN;
+            break;
+        case INPUT_V4_SWAP_SETTLE_USING_BURN:
+            PRINTF("Interpreting as INPUT_V4_SWAP_SETTLE_USING_BURN\n");
+            context->next_param = INPUT_V4_SWAP_TAKE_CLAIMS;
+            break;
+        case INPUT_V4_SWAP_TAKE_CLAIMS:
+            PRINTF("Interpreting as INPUT_V4_SWAP_TAKE_CLAIMS\n");
+            context->next_param = INPUT_V4_SWAP_POOL_KEY;
+            break;
+        case INPUT_V4_SWAP_POOL_KEY:
+            PRINTF("Interpreting as INPUT_V4_SWAP_POOL_KEY\n");
+            // V4 Pool Key: currency0 (32 bytes), currency1 (32 bytes), fee (24 bytes), tickSpacing (1 byte), hook (20 bytes)
+            // Extract currency0 address (last 20 bytes of first 32-byte slot)
+            if (context->current_path_read == 0) {
+                uint8_t currency0[ADDRESS_LENGTH];
+                memcpy(currency0, msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
+                // For V4, currencies can be ETH (address(0)) or ERC20 tokens
+                if (handle_v4_currency(context, currency0, INPUT) != 0) {
+                    PRINTF("Error handling V4 currency0\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    break;
+                }
+                context->current_path_read = 1;
+            } else if (context->current_path_read == 1) {
+                // Extract currency1 address (last 20 bytes of second 32-byte slot)  
+                uint8_t currency1[ADDRESS_LENGTH];
+                memcpy(currency1, msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
+                if (handle_v4_currency(context, currency1, OUTPUT) != 0) {
+                    PRINTF("Error handling V4 currency1\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    break;
+                }
+                context->current_path_read = 0;
+                context->next_param = INPUT_V4_SWAP_PARAMS;
+            }
+            break;
+        case INPUT_V4_SWAP_PARAMS:
+            PRINTF("Interpreting as INPUT_V4_SWAP_PARAMS\n");
+            // V4 SwapParams: zeroForOne (bool), amountSpecified (int256), sqrtPriceLimitX96 (uint160)
+            if (context->current_path_read == 0) {
+                // First 32-byte parameter contains zeroForOne and amountSpecified
+                // Extract zeroForOne from the first byte
+                bool zero_for_one = msg->parameter[PARAMETER_LENGTH - 1] != 0;
+                PRINTF("V4 swap direction: zeroForOne = %d\n", zero_for_one);
+                
+                // Set swap type for UI display
+                context->swap_type = EXACT_IN; // V4 swaps are typically exact input
+                context->current_path_read = 1;
+            } else if (context->current_path_read == 1) {
+                // Second 32-byte parameter contains amountSpecified (signed int256)
+                // For UI purposes, treat as amount for input token
+                if (context->input.asset_type != UNSET) {
+                    memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
+                    PRINTF("V4 swap amount specified: %.*H\n", PARAMETER_LENGTH, msg->parameter);
+                }
+                context->current_path_read = 0;
+                
+                ++context->current_command;
+                if (prepare_reading_next_input(context) != 0) {
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                }
             }
             break;
 
