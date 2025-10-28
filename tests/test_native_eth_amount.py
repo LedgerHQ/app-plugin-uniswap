@@ -27,21 +27,25 @@ class TestNativeEthAmount:
 
     def test_refuse_eth_amount_for_token(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with pytest.raises(ExceptionRAPDU) as e:
             uniswap_client.send_sync_sign_request(from_weth_exact_in, amount=Web3.to_wei(1, "ether"))
         assert e.value.status == 0x6A80
 
     def test_accept_eth_amount_for_native_less(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(wrap + from_weth_exact_in, amount=AMOUNT_LESS):
             navigation_helper.ui_validate()
 
     def test_accept_eth_amount_for_native_equal(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(wrap + from_weth_exact_in, amount=AMOUNT_EQUAL):
             navigation_helper.ui_validate()
 
     def test_accept_eth_amount_for_native_more(self, uniswap_client, navigation_helper):
         uniswap_client.set_external_plugin()
+        uniswap_client.provide_token_metadata(tokens.WETH)
         with uniswap_client.send_sign_request(wrap + from_weth_exact_in, amount=AMOUNT_MORE):
             navigation_helper.ui_validate()

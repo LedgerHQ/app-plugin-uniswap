@@ -1,6 +1,5 @@
 #include "plugin.h"
 #include "debug.h"
-#include "weth_token.h"
 #include "uniswap_contract_helpers.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
@@ -147,19 +146,19 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
     if (io_data->asset_type == UNSET) {
         // Nothing received yet, we indicate we received data and set it's type as ETH
         PRINTF("Setting %s to ETH\n", IO_NAME(direction));
-    } else if (io_data->asset_type == WETH) {
-        // We have already received a v2 or v3 swap with WETH as input or output, change it to
-        // ETH
-        PRINTF("Switching %s from WETH to ETH\n", IO_NAME(direction));
+    } else if (io_data->asset_type == UNKNOWN_TOKEN || io_data->asset_type == KNOWN_TOKEN) {
+        // We have already received a v2 or v3 swap with a token (assumed to be WETH)
+        // WRAP_ETH/UNWRAP_WETH commands explicitly indicate ETH<->WETH conversion
+        PRINTF("Switching %s from token to ETH (wrap/unwrap)\n", IO_NAME(direction));
     } else if (io_data->asset_type == ETH) {
         // We received a previous wrap or unwrap request, refuse
         PRINTF("Error: received a second %s command\n", WRAP_UNWRAP_NAME(direction));
         return -1;
     } else {
-        // We have already received a swap with some != WETH token, refuse
-        PRINTF("Error: received a %s command but %s is a token\n",
-               WRAP_UNWRAP_NAME(direction),
-               IO_NAME(direction));
+        // Unexpected asset type
+        PRINTF("Error: unexpected asset type %d for %s command\n",
+               io_data->asset_type,
+               WRAP_UNWRAP_NAME(direction));
         return -1;
     }
     io_data->asset_type = ETH;
@@ -172,14 +171,10 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
 // Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
 static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
     PRINTF("Setting token\n");
-    if (token_is_weth(address)) {
-        PRINTF("Token to set is WETH\n");
-        io_data->asset_type = WETH;
-    } else {
-        PRINTF("Token to set is unknown %.*H\n", ADDRESS_LENGTH, address);
-        io_data->asset_type = UNKNOWN_TOKEN;
-        memmove(io_data->u.address, address, ADDRESS_LENGTH);
-    }
+    // All tokens (including WETH) are now treated as unknown and will be resolved via CAL
+    PRINTF("Token to set is unknown %.*H\n", ADDRESS_LENGTH, address);
+    io_data->asset_type = UNKNOWN_TOKEN;
+    memmove(io_data->u.address, address, ADDRESS_LENGTH);
 
     return 0;
 }
@@ -192,21 +187,20 @@ static bool address_partially_matches_io(const uint8_t *address,
     if (io->asset_type == UNSET) {
         return false;
     }
+
     if (io->asset_type == ETH && !accept_eth) {
         return false;
     }
 
-    const uint8_t(*ref)[ADDRESS_LENGTH];
-    if (io->asset_type == WETH || io->asset_type == ETH) {
-        PRINTF("Comparing with WETH\n");
-        ref = &weth_address;
-    } else {
+    // For UNKNOWN_TOKEN and KNOWN_TOKEN, compare with the stored address
+    if (io->asset_type == UNKNOWN_TOKEN || io->asset_type == KNOWN_TOKEN) {
         PRINTF("Comparing with saved token\n");
-        ref = &io->u.address;
+        PRINTF("Trying to match : %.*H\n", length, address);
+        PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, io->u.address, offset);
+        return (memcmp(io->u.address + offset, address, length) == 0);
     }
-    PRINTF("Trying to match : %.*H\n", length, address);
-    PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, *ref, offset);
-    return (memcmp(*ref + offset, address, length) == 0);
+
+    return false;
 }
 
 static bool address_matches_io(const uint8_t address[ADDRESS_LENGTH],

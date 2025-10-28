@@ -125,7 +125,6 @@ typedef enum parameter_e {
 typedef enum asset_type_e {
     UNSET = 0,
     ETH,
-    WETH,
     UNKNOWN_TOKEN,
     KNOWN_TOKEN,
 } asset_type_t;

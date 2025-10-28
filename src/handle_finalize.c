@@ -1,5 +1,4 @@
 #include "plugin.h"
-#include "weth_token.h"
 #include "uniswap_contract_helpers.h"
 
 static bool superior(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_LENGTH]) {
@@ -22,17 +21,16 @@ static bool resolve_asset(io_data_t *io_data) {
         io_data->u.token_info.decimals = WEI_TO_ETHER;
         strlcpy(io_data->u.token_info.ticker, "ETH", sizeof(io_data->u.token_info.ticker));
         return true;
-
-    } else if (io_data->asset_type == WETH) {
-        PRINTF("Finalizing IO with asset WETH\n");
-        io_data->u.token_info.decimals = WETH_DECIMALS;
-        strlcpy(io_data->u.token_info.ticker, WETH_TICKER, sizeof(io_data->u.token_info.ticker));
-        // Handle it like a token from now on
-        io_data->asset_type = KNOWN_TOKEN;
-        return true;
-
-    } else {
+    } else if (io_data->asset_type == UNKNOWN_TOKEN) {
+        // Request CAL data for all tokens (including WETH)
         PRINTF("Requesting CAL data for token %.*H\n", ADDRESS_LENGTH, io_data->u.address);
+        return false;
+    } else if (io_data->asset_type == KNOWN_TOKEN) {
+        // Token info already provided via CAL
+        PRINTF("Token already resolved via CAL\n");
+        return true;
+    } else {
+        PRINTF("Warning: unexpected asset type %d\n", io_data->asset_type);
         return false;
     }
 }
@@ -70,21 +68,15 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    // Maybe not technically impossible but useless edge case that complicates handling.
-    if ((context->input.asset_type == ETH || context->input.asset_type == WETH) &&
-        (context->output.asset_type == ETH || context->output.asset_type == WETH)) {
-        PRINTF("Error: this swap doesn't make sense\n");
+    // Prevent swapping ETH to ETH (which doesn't make sense)
+    if (context->input.asset_type == ETH && context->output.asset_type == ETH) {
+        PRINTF("Error: ETH -> ETH swap doesn't make sense\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
     }
 
-    // This sweep was not just a sweep, it was the main uwrap
-    if (context->unwrap_sweep_received && context->output.asset_type == WETH) {
-        PRINTF("Sweep is actually the main unwrap\n");
-        context->output.asset_type = ETH;
-        memset(context->output.u.wrap_unwrap_amount, 0, PARAMETER_LENGTH);
-        context->unwrap_sweep_received = false;
-    }
+    // Note: With WETH treated as a regular token, ETH <-> WETH swaps are now allowed
+    // and will be displayed as such (e.g., "Swap ETH to WETH" instead of "Wrap ETH")
 
     if (context->intermediate.intermediate_status != UNUSED) {
         PRINTF("Error: finalize failed, intermediate_status is still in use\n");
