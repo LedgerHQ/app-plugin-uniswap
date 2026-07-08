@@ -2,9 +2,8 @@
 
 // We will run in this function if we requested CAL data in handle_finalize
 
-static int provide_token_for_io(io_data_t *io_data,
-                                const extraInfo_t *item,
-                                bool *info_is_missing) {
+static int provide_token_for_io(io_data_t* io_data, const extraInfo_t* item,
+                                bool* info_is_missing) {
     // Check if we need CAL data for this asset
     *info_is_missing = false;
     if (io_data->asset_type == UNKNOWN_TOKEN) {
@@ -14,7 +13,8 @@ static int provide_token_for_io(io_data_t *io_data,
             PRINTF("Warning: no CAL data provided\n");
         } else {
             // Ensure the addresses match
-            if (memcmp(io_data->u.address, item->token.address, ADDRESS_LENGTH) != 0) {
+            if (memcmp(io_data->u.address, item->token.address,
+                       ADDRESS_LENGTH) != 0) {
                 PRINTF("Error: data provided by the CAL does not match\n");
                 PRINTF("Needed: %.*H\n", ADDRESS_LENGTH, io_data->u.address);
                 PRINTF("Received: %.*H\n", ADDRESS_LENGTH, item->token.address);
@@ -25,8 +25,7 @@ static int provide_token_for_io(io_data_t *io_data,
                 // Store its decimals.
                 io_data->u.token_info.decimals = item->token.decimals;
                 // Store its ticker.
-                strlcpy(io_data->u.token_info.ticker,
-                        (char *) item->token.ticker,
+                strlcpy(io_data->u.token_info.ticker, (char*)item->token.ticker,
                         sizeof(io_data->u.token_info.ticker));
             }
         }
@@ -36,19 +35,21 @@ static int provide_token_for_io(io_data_t *io_data,
     return 0;
 }
 
-void handle_provide_token(ethPluginProvideInfo_t *msg) {
-    context_t *context = (context_t *) msg->pluginContext;
+void handle_provide_token(ethPluginProvideInfo_t* msg) {
+    context_t* context = (context_t*)msg->pluginContext;
     msg->result = ETH_PLUGIN_RESULT_OK;
     msg->additionalScreens = 0;
     bool token_in_info_missing;
     bool token_out_info_missing;
 
-    if (provide_token_for_io(&context->input, msg->item1, &token_in_info_missing) != 0) {
+    if (provide_token_for_io(&context->input, msg->item1,
+                             &token_in_info_missing) != 0) {
         PRINTF("Error in provide_token_for_io for input\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
     }
 
-    if (provide_token_for_io(&context->output, msg->item2, &token_out_info_missing) != 0) {
+    if (provide_token_for_io(&context->output, msg->item2,
+                             &token_out_info_missing) != 0) {
         PRINTF("Error in provide_token_for_io for output\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
     }

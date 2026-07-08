@@ -1,6 +1,7 @@
-#include "plugin.h"
 #include "uniswap_contract_helpers.h"
+
 #include "crypto_helpers.h"
+#include "plugin.h"
 
 // Check if address is 0x1
 static bool is_sender_constant(const uint8_t address[ADDRESS_LENGTH]) {
@@ -31,7 +32,8 @@ bool is_router_address(const uint8_t address[ADDRESS_LENGTH]) {
     return (address[ADDRESS_LENGTH - 1] == 2);
 }
 
-// Check if amount is 8000000000000000000000000000000000000000000000000000000000000000
+// Check if amount is
+// 8000000000000000000000000000000000000000000000000000000000000000
 bool is_contract_balance(const uint8_t amount[PARAMETER_LENGTH]) {
     if (amount[0] != 0x80) {
         return false;
@@ -45,20 +47,16 @@ bool is_contract_balance(const uint8_t amount[PARAMETER_LENGTH]) {
 }
 
 // Derive our key on the derivation path and save our address in the context
-int get_self_address(uint8_t address[ADDRESS_LENGTH], bip32_path_t *bip32) {
+int get_self_address(uint8_t address[ADDRESS_LENGTH], bip32_path_t* bip32) {
     PRINTF("bip32_path = %.*H\n", bip32->length * 4, bip32->path);
     uint8_t raw_pubkey[65];
-    if (bip32_derive_get_pubkey_256(CX_CURVE_256K1,
-                                    bip32->path,
-                                    bip32->length,
-                                    raw_pubkey,
-                                    NULL,
-                                    CX_SHA512) != CX_OK) {
+    if (bip32_derive_get_pubkey_256(CX_CURVE_256K1, bip32->path, bip32->length,
+                                    raw_pubkey, NULL, CX_SHA512) != CX_OK) {
         PRINTF("bip32_derive_get_pubkey_256 FAILED\n");
         return -1;
     }
 
-    getEthAddressFromRawKey((const uint8_t *) raw_pubkey, address);
+    getEthAddressFromRawKey((const uint8_t*)raw_pubkey, address);
     PRINTF("Our address is %.*H\n", ADDRESS_LENGTH, address);
     return 0;
 }

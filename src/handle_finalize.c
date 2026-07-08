@@ -1,8 +1,9 @@
 #include "plugin.h"
-#include "weth_token.h"
 #include "uniswap_contract_helpers.h"
+#include "weth_token.h"
 
-static bool superior(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETER_LENGTH]) {
+static bool superior(const uint8_t a[PARAMETER_LENGTH],
+                     const uint8_t b[PARAMETER_LENGTH]) {
     return (memcmp(a, b, PARAMETER_LENGTH) > 0);
 }
 
@@ -16,30 +17,33 @@ static bool superior(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETE
     } while (0);
 
 // Resolve token if possible, request otherwise
-static bool resolve_asset(io_data_t *io_data) {
+static bool resolve_asset(io_data_t* io_data) {
     if (io_data->asset_type == ETH) {
         PRINTF("Finalizing IO with asset ETH\n");
         io_data->u.token_info.decimals = WEI_TO_ETHER;
-        strlcpy(io_data->u.token_info.ticker, "ETH", sizeof(io_data->u.token_info.ticker));
+        strlcpy(io_data->u.token_info.ticker, "ETH",
+                sizeof(io_data->u.token_info.ticker));
         return true;
 
     } else if (io_data->asset_type == WETH) {
         PRINTF("Finalizing IO with asset WETH\n");
         io_data->u.token_info.decimals = WETH_DECIMALS;
-        strlcpy(io_data->u.token_info.ticker, WETH_TICKER, sizeof(io_data->u.token_info.ticker));
+        strlcpy(io_data->u.token_info.ticker, WETH_TICKER,
+                sizeof(io_data->u.token_info.ticker));
         // Handle it like a token from now on
         io_data->asset_type = KNOWN_TOKEN;
         return true;
 
     } else {
-        PRINTF("Requesting CAL data for token %.*H\n", ADDRESS_LENGTH, io_data->u.address);
+        PRINTF("Requesting CAL data for token %.*H\n", ADDRESS_LENGTH,
+               io_data->u.address);
         return false;
     }
 }
 
-void handle_finalize(ethPluginFinalize_t *msg) {
+void handle_finalize(ethPluginFinalize_t* msg) {
     msg->result = ETH_PLUGIN_RESULT_OK;
-    context_t *context = (context_t *) msg->pluginContext;
+    context_t* context = (context_t*)msg->pluginContext;
 
     msg->uiType = ETH_UI_TYPE_GENERIC;
 
@@ -70,9 +74,12 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         return;
     }
 
-    // Maybe not technically impossible but useless edge case that complicates handling.
-    if ((context->input.asset_type == ETH || context->input.asset_type == WETH) &&
-        (context->output.asset_type == ETH || context->output.asset_type == WETH)) {
+    // Maybe not technically impossible but useless edge case that complicates
+    // handling.
+    if ((context->input.asset_type == ETH ||
+         context->input.asset_type == WETH) &&
+        (context->output.asset_type == ETH ||
+         context->output.asset_type == WETH)) {
         PRINTF("Error: this swap doesn't make sense\n");
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
@@ -104,13 +111,14 @@ void handle_finalize(ethPluginFinalize_t *msg) {
         } else {
             uint8_t native_value[PARAMETER_LENGTH];
             memset(native_value, 0, PARAMETER_LENGTH);
-            memmove(native_value + (PARAMETER_LENGTH - msg->txContent->value.length),
-                    msg->txContent->value.value,
-                    msg->txContent->value.length);
+            memmove(native_value +
+                        (PARAMETER_LENGTH - msg->txContent->value.length),
+                    msg->txContent->value.value, msg->txContent->value.length);
             if (superior(native_value, context->input.amount)) {
                 PRINTF("Using native payment value instead\n");
                 memmove(context->input.amount, native_value, PARAMETER_LENGTH);
-                PRINTF("New in value %.*H\n", PARAMETER_LENGTH, context->input.amount);
+                PRINTF("New in value %.*H\n", PARAMETER_LENGTH,
+                       context->input.amount);
             }
         }
     }
@@ -118,17 +126,23 @@ void handle_finalize(ethPluginFinalize_t *msg) {
     if (context->output.asset_type != ETH) {
         if (context->sweep_received) {
             PRINTF("Displaying sweep amount as output\n");
-            PRINTF("context->output.amount %.*H\n", PARAMETER_LENGTH, context->output.amount);
-            PRINTF("context->sweep_amount %.*H\n", PARAMETER_LENGTH, context->sweep_amount);
-            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
+            PRINTF("context->output.amount %.*H\n", PARAMETER_LENGTH,
+                   context->output.amount);
+            PRINTF("context->sweep_amount %.*H\n", PARAMETER_LENGTH,
+                   context->sweep_amount);
+            memmove(context->output.amount, context->sweep_amount,
+                    PARAMETER_LENGTH);
         }
     } else {
         if (context->sweep_received) {
             PRINTF("Using sweep_amount as out output\n");
-            memmove(context->output.amount, context->sweep_amount, PARAMETER_LENGTH);
-        } else if (superior(context->output.u.wrap_unwrap_amount, context->output.amount)) {
+            memmove(context->output.amount, context->sweep_amount,
+                    PARAMETER_LENGTH);
+        } else if (superior(context->output.u.wrap_unwrap_amount,
+                            context->output.amount)) {
             PRINTF("Using unwrap amount as out output\n");
-            memmove(context->output.amount, context->output.u.wrap_unwrap_amount, PARAMETER_LENGTH);
+            memmove(context->output.amount,
+                    context->output.u.wrap_unwrap_amount, PARAMETER_LENGTH);
         }
     }
 

@@ -1,8 +1,8 @@
 #include "plugin.h"
 
 // Sets the first screen to display.
-void handle_query_contract_id(ethQueryContractID_t *msg) {
-    const context_t *context = (const context_t *) msg->pluginContext;
+void handle_query_contract_id(ethQueryContractID_t* msg) {
+    const context_t* context = (const context_t*)msg->pluginContext;
 
     strlcpy(msg->name, APPNAME, msg->nameLength);
 

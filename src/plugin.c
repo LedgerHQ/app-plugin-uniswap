@@ -15,9 +15,10 @@
  *  limitations under the License.
  ********************************************************************************/
 
-#include <stdint.h>
 #include "plugin.h"
 
-// This array will be automatically expanded to map all selector_t names with the correct value.
-// Do not modify !
+#include <stdint.h>
+
+// This array will be automatically expanded to map all selector_t names with
+// the correct value. Do not modify !
 const uint32_t SELECTORS[SELECTOR_COUNT] = {SELECTORS_LIST(TO_VALUE)};
