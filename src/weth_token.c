@@ -1,12 +1,143 @@
 #include "weth_token.h"
 
-#define WETH_ADDRESS                                                \
-    {                                                               \
-        0xc0, 0x2a, 0xaa, 0x39, 0xb2, 0x23, 0xfe, 0x8d, 0x0a, 0x0e, \
-        0x5c, 0x4f, 0x27, 0xea, 0xd9, 0x08, 0x3c, 0x75, 0x6c, 0xc2, \
-    };
-const uint8_t weth_address[ADDRESS_LENGTH] = WETH_ADDRESS;
+// Wrapped-native (WETH9-style) token deployments used by the Universal Router,
+// per supported chain. Sources: Uniswap deployment records (the same values as
+// the universal-router-sdk CHAIN_CONFIGS / sdk-core WETH9 maps) and Ledger's
+// device-sdk-ts WETH_ADDRESS_BY_CHAIN_ID.
+// Celo (42220) has no wrapped-native token and deliberately has no entry.
+static const wrapped_native_t WRAPPED_NATIVES[] = {
+    // Ethereum mainnet
+    {1,
+     {0xc0, 0x2a, 0xaa, 0x39, 0xb2, 0x23, 0xfe, 0x8d, 0x0a, 0x0e,
+      0x5c, 0x4f, 0x27, 0xea, 0xd9, 0x08, 0x3c, 0x75, 0x6c, 0xc2},
+     "WETH",
+     "ETH"},
+    // Optimism
+    {10,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+    // BNB Chain
+    {56,
+     {0xbb, 0x4c, 0xdb, 0x9c, 0xbd, 0x36, 0xb0, 0x1b, 0xd1, 0xcb,
+      0xae, 0xbf, 0x2d, 0xe0, 0x8d, 0x91, 0x73, 0xbc, 0x09, 0x5c},
+     "WBNB",
+     "BNB"},
+    // Unichain
+    {130,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+    // Polygon
+    {137,
+     {0x0d, 0x50, 0x0b, 0x1d, 0x8e, 0x8e, 0xf3, 0x1e, 0x21, 0xc9,
+      0x9d, 0x1d, 0xb9, 0xa6, 0x44, 0x4d, 0x3a, 0xdf, 0x12, 0x70},
+     "WMATIC",
+     "POL"},
+    // ZKsync Era
+    {324,
+     {0x5a, 0xea, 0x57, 0x75, 0x95, 0x9f, 0xbc, 0x25, 0x57, 0xcc,
+      0x87, 0x89, 0xbc, 0x1b, 0xf9, 0x0a, 0x23, 0x9d, 0x9a, 0x91},
+     "WETH",
+     "ETH"},
+    // World Chain
+    {480,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+    // Soneium
+    {1868,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+    // Base
+    {8453,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+    // Arbitrum One
+    {42161,
+     {0x82, 0xaf, 0x49, 0x44, 0x7d, 0x8a, 0x07, 0xe3, 0xbd, 0x95,
+      0xbd, 0x0d, 0x56, 0xf3, 0x52, 0x41, 0x52, 0x3f, 0xba, 0xb1},
+     "WETH",
+     "ETH"},
+    // Avalanche C-Chain
+    {43114,
+     {0xb3, 0x1f, 0x66, 0xaa, 0x3c, 0x1e, 0x78, 0x53, 0x63, 0xf0,
+      0x87, 0x5a, 0x1b, 0x74, 0xe2, 0x7b, 0x85, 0xfd, 0x66, 0xc7},
+     "WAVAX",
+     "AVAX"},
+    // Blast
+    {81457,
+     {0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04},
+     "WETH",
+     "ETH"},
+    // Zora
+    {7777777,
+     {0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06},
+     "WETH",
+     "ETH"},
+};
 
-bool token_is_weth(const uint8_t token[ADDRESS_LENGTH]) {
-    return (memcmp(weth_address, token, ADDRESS_LENGTH) == 0);
+#define WRAPPED_NATIVE_COUNT (sizeof(WRAPPED_NATIVES) / sizeof(WRAPPED_NATIVES[0]))
+
+// Returns the selected entry, NULL if the chain has none.
+static const wrapped_native_t *get_wrapped_native(const context_t *context) {
+    if (context->wrapped_native_idx == 0 || context->wrapped_native_idx > WRAPPED_NATIVE_COUNT) {
+        return NULL;
+    }
+    // Index is stored offset by one so that a zeroed context means "no entry"
+    return &WRAPPED_NATIVES[context->wrapped_native_idx - 1];
+}
+
+void select_wrapped_native(context_t *context, const txInt256_t *chain_id) {
+    context->wrapped_native_idx = 0;
+
+    // Legacy transactions without a chain ID (and absurdly long IDs) get no entry:
+    // wrap-involving flows will be refused rather than risk a wrong display.
+    if (chain_id->length == 0 || chain_id->length > sizeof(uint64_t)) {
+        PRINTF("No usable chain ID, no wrapped native selected\n");
+        return;
+    }
+
+    uint64_t id = u64_from_BE(chain_id->value, chain_id->length);
+    for (uint8_t i = 0; i < WRAPPED_NATIVE_COUNT; ++i) {
+        if (WRAPPED_NATIVES[i].chain_id == id) {
+            PRINTF("Selected wrapped native %s\n", WRAPPED_NATIVES[i].wrapped_ticker);
+            context->wrapped_native_idx = i + 1;
+            return;
+        }
+    }
+    PRINTF("No wrapped native known for this chain\n");
+}
+
+bool has_wrapped_native(const context_t *context) {
+    return get_wrapped_native(context) != NULL;
+}
+
+bool token_is_weth(const context_t *context, const uint8_t token[ADDRESS_LENGTH]) {
+    const wrapped_native_t *wrapped = get_wrapped_native(context);
+    return (wrapped != NULL) && (memcmp(wrapped->address, token, ADDRESS_LENGTH) == 0);
+}
+
+const uint8_t *wrapped_native_address(const context_t *context) {
+    const wrapped_native_t *wrapped = get_wrapped_native(context);
+    return (wrapped != NULL) ? wrapped->address : NULL;
+}
+
+const char *wrapped_native_ticker(const context_t *context) {
+    const wrapped_native_t *wrapped = get_wrapped_native(context);
+    return (wrapped != NULL) ? wrapped->wrapped_ticker : "WETH";
+}
+
+const char *native_ticker(const context_t *context) {
+    const wrapped_native_t *wrapped = get_wrapped_native(context);
+    return (wrapped != NULL) ? wrapped->native_ticker : "ETH";
 }

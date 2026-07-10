@@ -3,6 +3,7 @@
 #include "os.h"
 #include "check_tx_content.h"
 #include "uniswap_contract_helpers.h"
+#include "weth_token.h"
 
 // Called once to init.
 void handle_init_contract(ethPluginInitContract_t *msg) {
@@ -42,6 +43,10 @@ void handle_init_contract(ethPluginInitContract_t *msg) {
         msg->result = ETH_PLUGIN_RESULT_ERROR;
         return;
     }
+
+    // Select the chain's wrapped-native token (WETH, WBNB, ...). Not finding one is not an
+    // error: token <-> token swaps still work, wrap-involving commands will be refused.
+    select_wrapped_native(context, &msg->txContent->chainID);
 
     size_t index;
     if (!find_selector(U4BE(msg->selector, 0), SELECTORS, SELECTOR_COUNT, &index)) {
