@@ -119,6 +119,44 @@ typedef enum parameter_e {
     INPUT_SWEEP_RECIPIENT,
     INPUT_SWEEP_AMOUNT,
 
+    // Parsing the V4_SWAP envelope: the command input is itself
+    // abi.encode(bytes actions, bytes[] params) — a second-level program.
+    INPUT_V4_LENGTH,
+    INPUT_V4_ACTIONS_OFFSET,
+    INPUT_V4_PARAMS_OFFSET,
+    INPUT_V4_ACTIONS_LENGTH,
+    INPUT_V4_ACTIONS_DATA,
+    INPUT_V4_PARAMS_NUMBER,
+    INPUT_V4_PARAMS_OFFSET_ITEM,
+
+    // Parsing one V4 SWAP action's params (SWAP_EXACT_IN / _OUT, path form).
+    INPUT_V4_SWAP_PARAM_LENGTH,
+    INPUT_V4_SWAP_TUPLE_OFFSET,
+    INPUT_V4_SWAP_FIRST_CURRENCY,
+    INPUT_V4_SWAP_PATH_OFFSET,
+    INPUT_V4_SWAP_AMOUNT_SPECIFIED,
+    INPUT_V4_SWAP_AMOUNT_LIMIT,
+    INPUT_V4_SWAP_PATH_LENGTH,
+    INPUT_V4_SWAP_PATH_OFFSET_ITEM,
+    INPUT_V4_SWAP_PATHKEY_CURRENCY,
+    INPUT_V4_SWAP_PATHKEY_FEE,
+    INPUT_V4_SWAP_PATHKEY_TICK_SPACING,
+    INPUT_V4_SWAP_PATHKEY_HOOKS,
+    INPUT_V4_SWAP_PATHKEY_HOOKDATA_OFFSET,
+    INPUT_V4_SWAP_PATHKEY_HOOKDATA_LENGTH,
+    INPUT_V4_SWAP_PATHKEY_HOOKDATA_SKIP,
+
+    // Parsing one V4 SETTLE / SETTLE_ALL param (skipped — amounts come from the
+    // swap action).
+    INPUT_V4_SETTLE_PARAM_LENGTH,
+    INPUT_V4_SETTLE_SKIP,
+
+    // Parsing one V4 TAKE / TAKE_ALL param (carries the leg-output recipient).
+    INPUT_V4_TAKE_PARAM_LENGTH,
+    INPUT_V4_TAKE_CURRENCY,
+    INPUT_V4_TAKE_RECIPIENT,
+    INPUT_V4_TAKE_SKIP,
+
     UNEXPECTED_PARAMETER,
 } parameter_t;
 
@@ -210,6 +248,10 @@ typedef enum swap_type_e {
 // observed using up to 12 commands.
 #define MAX_COMMANDS_HANDLED 16
 
+// Max V4 actions in a single V4_SWAP command. Production V4_SWAP programs use 3
+// ([SWAP, SETTLE, TAKE]); 8 leaves ample headroom and anything larger rejects.
+#define MAX_V4_ACTIONS 8
+
 typedef struct context_s {
     // Set to be the next param we expect to parse.
     parameter_t next_param;
@@ -243,6 +285,25 @@ typedef struct context_s {
         uint16_t current_path_read;
         uint16_t current_input_offset_read;
     };
+
+    // ===== V4_SWAP nested-program parsing state =====
+    // The V4_SWAP command input is abi.encode(bytes actions, bytes[] params): a
+    // second-level program. We decode the action opcodes, then walk each action's
+    // param struct, feeding token/amount data into the same input/output/intermediate
+    // machinery used by V2/V3 so route collapse and recipient handling are reused.
+    uint8_t v4_actions_number;
+    uint8_t v4_current_action;
+    uint8_t v4_actions[MAX_V4_ACTIONS];
+    bool v4_leg_exact_in;  // direction of the SWAP action currently being parsed
+    // Generic per-param word/item counter (param-offset array, PathKey-offset
+    // array, static-param skips). Lifetimes never overlap within one param.
+    uint16_t v4_item_read;
+    uint8_t v4_pathkey_count;
+    uint8_t v4_pathkey_index;
+    uint16_t v4_hookdata_skip;  // hookData bytes left to skip in the current PathKey
+    // The swap struct's leading currency (input for exact-in, output for exact-out),
+    // stashed until amounts are read and reception can be fed.
+    uint8_t v4_first_currency[ADDRESS_LENGTH];
 
     // The data for the input of the swap
     io_data_t input;
