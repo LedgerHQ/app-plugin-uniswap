@@ -1391,7 +1391,17 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     ADDRESS_LENGTH);
             context->next_param = INPUT_V4_SWAP_PATH_OFFSET;
             break;
-        case INPUT_V4_SWAP_PATH_OFFSET:  // offset of the PathKey[] path; skip
+        case INPUT_V4_SWAP_PATH_OFFSET:
+            // Offset of the PathKey[] path within the swap struct. In the UR 2.0
+            // layout the struct head is exactly {currency, path, amountSpecified,
+            // amountLimit} so this offset is 0x80. UR 2.1.1 inserts a minHopPriceX36
+            // array, shifting it to 0xa0; that layout is not supported here (it is
+            // tracked separately), so reject rather than misparse.
+            if (U2BE(msg->parameter, PARAMETER_LENGTH - 2) != 0x80) {
+                PRINTF("Error: unexpected V4 path offset (unsupported UR layout)\n");
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                break;
+            }
             context->next_param = INPUT_V4_SWAP_AMOUNT_SPECIFIED;
             break;
         case INPUT_V4_SWAP_AMOUNT_SPECIFIED:
