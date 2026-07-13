@@ -88,7 +88,8 @@ static bool amount_in(ethQueryContractUI_t *msg, const context_t *context) {
     if (context->swap_type == EXACT_IN) {
         strlcpy(msg->title, "Send", msg->titleLength);
     } else {
-        strlcpy(msg->title, "Send minimum", msg->titleLength);
+        // Exact-output swap: the input amount shown is amountInMaximum.
+        strlcpy(msg->title, "Send maximum", msg->titleLength);
     }
     return format_amount(msg->msg, msg->msgLength, &context->input);
 }
