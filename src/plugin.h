@@ -206,8 +206,9 @@ typedef enum swap_type_e {
     EXACT_OUT,
 } swap_type_t;
 
-// Arbitrary number, I have not seen an example of a TX using more than 8 commands
-#define MAX_COMMANDS_HANDLED 8
+// Sized from production routing data: multi-protocol split routes have been
+// observed using up to 12 commands.
+#define MAX_COMMANDS_HANDLED 16
 
 typedef struct context_s {
     // Set to be the next param we expect to parse.

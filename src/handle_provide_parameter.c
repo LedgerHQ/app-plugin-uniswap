@@ -89,6 +89,7 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 break;
             case PERMIT2_PERMIT_BATCH:
             case PERMIT2_TRANSFER_FROM_BATCH:
+            case PERMIT2_TRANSFER_FROM:
             case PERMIT2_PERMIT:
                 PRINTF("Preparing to read PERMIT2_X related command\n");
                 context->next_param = INPUT_PERMIT2_LENGTH;
