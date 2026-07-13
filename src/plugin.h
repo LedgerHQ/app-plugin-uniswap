@@ -257,7 +257,17 @@ typedef struct context_s {
     uint8_t sweep_amount[INT256_LENGTH];
 
     bool recipient_set;
+    // Set when the recipient was fixed by a wrap / unwrap / sweep command: it is
+    // user-facing and a later swap leg may not silently replace it.
+    bool recipient_sticky;
     uint8_t recipient[ADDRESS_LENGTH];
+
+    // Recipient of the swap leg currently being parsed. Only committed as the
+    // displayed recipient once the leg's output is resolved: legs whose output is
+    // consumed by a later leg are internal plumbing (their recipient is a pool or
+    // the router) and must not conflict with the user-facing recipient.
+    bool leg_recipient_set;
+    uint8_t leg_recipient[ADDRESS_LENGTH];
 
     intermediate_data_t intermediate;
 

@@ -249,7 +249,11 @@ static bool address_matches_intermediate(const uint8_t address[ADDRESS_LENGTH],
                                                   ADDRESS_LENGTH);
 }
 
-static int handle_address_reception(const context_t *context,
+// Recipient bookkeeping helpers, defined next to handle_recipient below
+static int commit_leg_recipient(context_t *context, bool must_match);
+static void drop_leg_recipient(context_t *context);
+
+static int handle_address_reception(context_t *context,
                                     uint8_t address[ADDRESS_LENGTH],
                                     io_data_t *this_io,
                                     io_data_t *opposite_io,
@@ -262,6 +266,10 @@ static int handle_address_reception(const context_t *context,
             PRINTF("Error, overflow while adding amounts\n");
             return -1;
         }
+        // A split leg extending the displayed output: recipients must agree
+        if (address_direction == OUTPUT && commit_leg_recipient(context, true) != 0) {
+            return -1;
+        }
 
     } else if (address_matches_io(context, address, opposite_io, false)) {
         PRINTF("This %s address extends the previously received %s\n",
@@ -270,6 +278,16 @@ static int handle_address_reception(const context_t *context,
         // Drop the saved IO, drop this received edge of the swap pair
         opposite_io->asset_type = UNSET;
         memset(opposite_io->amount, 0, INT256_LENGTH);
+        if (address_direction == INPUT) {
+            // This leg consumes the previous output: that output's recipient was
+            // internal plumbing (typically this leg's pool), not the user's
+            if (!context->recipient_sticky) {
+                context->recipient_set = false;
+            }
+        } else {
+            // This leg's output feeds a previously parsed input: plumbing
+            drop_leg_recipient(context);
+        }
 
     } else if (address_matches_intermediate(address, intermediate, address_direction)) {
         PRINTF("This %s address extends the previously received %s intermediate\n",
@@ -277,6 +295,10 @@ static int handle_address_reception(const context_t *context,
                OPPOSITE_IO_NAME(address_direction));
         // Drop the saved IO intermediate, drop this received edge of the swap pair
         intermediate->intermediate_status = UNUSED;
+        if (address_direction == OUTPUT) {
+            // This leg's output cancelled against a dangling input edge: plumbing
+            drop_leg_recipient(context);
+        }
 
     } else if (this_io->asset_type == UNSET) {
         PRINTF("No %s set yet, save this address as it\n", IO_NAME(address_direction));
@@ -285,12 +307,21 @@ static int handle_address_reception(const context_t *context,
             return -1;
         }
         memmove(this_io->amount, this_io->tmp_amount, PARAMETER_LENGTH);
+        // A fresh output: this leg's recipient is the displayed one
+        if (address_direction == OUTPUT && commit_leg_recipient(context, false) != 0) {
+            return -1;
+        }
 
     } else if (intermediate->intermediate_status == UNUSED) {
         PRINTF("This %s address did not match anything, treat it as the edge of a split swap\n",
                IO_NAME(address_direction));
         intermediate->intermediate_status = (intermediate_status_t) address_direction;
         memmove(intermediate->address, address, ADDRESS_LENGTH);
+        if (address_direction == OUTPUT) {
+            // A dangling output edge either gets consumed later (plumbing) or
+            // fails finalize; either way its recipient is never displayed
+            drop_leg_recipient(context);
+        }
 
     } else {
         PRINTF(
@@ -509,13 +540,26 @@ static int parse_v3_path(context_t *context,
                     PRINTF("Error, overflow while adding amounts\n");
                     return -1;
                 }
+                if (last_direction == OUTPUT && commit_leg_recipient(context, true) != 0) {
+                    return -1;
+                }
             } else if (context->intermediate.split_reception_status & MATCHING_OPPOSING_IO) {
                 // Drop the saved IO, drop this received edge of the swap pair
                 first_token_to_read->asset_type = UNSET;
                 memset(first_token_to_read->amount, 0, INT256_LENGTH);
+                if (last_direction == INPUT) {
+                    if (!context->recipient_sticky) {
+                        context->recipient_set = false;
+                    }
+                } else {
+                    drop_leg_recipient(context);
+                }
             } else if (context->intermediate.split_reception_status & MATCHING_INTERMEDIATE) {
                 // Drop the saved IO intermediate, drop this received edge of the swap pair
                 context->intermediate.intermediate_status = UNUSED;
+                if (last_direction == OUTPUT) {
+                    drop_leg_recipient(context);
+                }
             } else {
                 // Unreachable per construct
                 return -1;
@@ -558,7 +602,45 @@ static int handle_recipient(const uint8_t parameter[PARAMETER_LENGTH], context_t
                 parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                 ADDRESS_LENGTH);
     }
+    // Wrap / unwrap / sweep recipients are user-facing transfers: a later swap
+    // leg may not silently replace them.
+    context->recipient_sticky = true;
     return 0;
+}
+
+// Stash the recipient of the swap leg being parsed; committed when its output resolves.
+static void stash_leg_recipient(context_t *context, const uint8_t parameter[PARAMETER_LENGTH]) {
+    context->leg_recipient_set = true;
+    memmove(context->leg_recipient,
+            parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            ADDRESS_LENGTH);
+}
+
+// The parsed leg's output resolved as (part of) the swap output: its recipient
+// becomes the displayed recipient. 'must_match' is set when the leg extends an
+// output that already has a recipient (split legs must agree). A sticky
+// recipient (wrap / unwrap / sweep) always requires a match.
+static int commit_leg_recipient(context_t *context, bool must_match) {
+    if (!context->leg_recipient_set) {
+        return 0;
+    }
+    if ((must_match || context->recipient_sticky) && context->recipient_set &&
+        memcmp(context->recipient, context->leg_recipient, ADDRESS_LENGTH) != 0) {
+        PRINTF("Error: can't mix different recipients\n");
+        PRINTF("Received: %.*H\n", ADDRESS_LENGTH, context->leg_recipient);
+        PRINTF("Expected: %.*H\n", ADDRESS_LENGTH, context->recipient);
+        return -1;
+    }
+    context->recipient_set = true;
+    memmove(context->recipient, context->leg_recipient, ADDRESS_LENGTH);
+    context->leg_recipient_set = false;
+    return 0;
+}
+
+// The leg's output turned out to be internal plumbing (consumed / cancelled):
+// its recipient is dropped without being displayed.
+static void drop_leg_recipient(context_t *context) {
+    context->leg_recipient_set = false;
 }
 
 // Size of the network fees element in a V3 path
@@ -698,6 +780,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     memmove(context->recipient,
                             msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                             ADDRESS_LENGTH);
+                    context->recipient_sticky = true;
                 }
             }
             context->next_param = INPUT_UNWRAP_WETH_AMOUNT;
@@ -790,10 +873,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_IN_RECIPIENT:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN:
@@ -856,10 +936,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_OUT_RECIPIENT:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT:
@@ -922,10 +999,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_IN_RECIPIENT:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN:
@@ -987,10 +1061,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_OUT_RECIPIENT:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT:
@@ -1081,6 +1152,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     PRINTF("Received a sweep but the swap recipient was not the router\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 } else {
+                    context->recipient_sticky = true;
                     memmove(context->recipient,
                             msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                             ADDRESS_LENGTH);
