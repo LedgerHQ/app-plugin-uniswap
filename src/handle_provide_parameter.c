@@ -633,25 +633,49 @@ static void stash_leg_recipient(context_t *context, const uint8_t parameter[PARA
             ADDRESS_LENGTH);
 }
 
+// Reconcile a resolved output recipient with the committed one, across V2 / V3
+// leg recipients and V4 TAKE recipients alike.
+// The ADDRESS_THIS / router sentinel means the output stays in the router's
+// custody: it never displaces a user-facing recipient, it only fills an empty
+// slot (so the sweep / unwrap custody checks keep working). A user-facing value
+// replaces custody freely; two different user-facing values conflict when a
+// match is required (split legs / sticky wrap-unwrap-sweep recipients). The
+// MSG_SENDER sentinel and the sender's own address are considered equal.
+static int reconcile_recipient(context_t *context,
+                               const uint8_t address[ADDRESS_LENGTH],
+                               bool must_match) {
+    if (context->recipient_set) {
+        if (is_router_address(address)) {
+            // Custody: keep whatever recipient is already committed
+            return 0;
+        }
+        if (!is_router_address(context->recipient)) {
+            bool same = (memcmp(context->recipient, address, ADDRESS_LENGTH) == 0) ||
+                        (is_sender_address(context->recipient, context->own_address) &&
+                         is_sender_address(address, context->own_address));
+            if (!same && (must_match || context->recipient_sticky)) {
+                PRINTF("Error: can't mix different recipients\n");
+                PRINTF("Received: %.*H\n", ADDRESS_LENGTH, address);
+                PRINTF("Expected: %.*H\n", ADDRESS_LENGTH, context->recipient);
+                return -1;
+            }
+        }
+    }
+    context->recipient_set = true;
+    memmove(context->recipient, address, ADDRESS_LENGTH);
+    return 0;
+}
+
 // The parsed leg's output resolved as (part of) the swap output: its recipient
 // becomes the displayed recipient. 'must_match' is set when the leg extends an
-// output that already has a recipient (split legs must agree). A sticky
-// recipient (wrap / unwrap / sweep) always requires a match.
+// output that already has a recipient (split legs must agree).
 static int commit_leg_recipient(context_t *context, bool must_match) {
     if (!context->leg_recipient_set) {
         return 0;
     }
-    if ((must_match || context->recipient_sticky) && context->recipient_set &&
-        memcmp(context->recipient, context->leg_recipient, ADDRESS_LENGTH) != 0) {
-        PRINTF("Error: can't mix different recipients\n");
-        PRINTF("Received: %.*H\n", ADDRESS_LENGTH, context->leg_recipient);
-        PRINTF("Expected: %.*H\n", ADDRESS_LENGTH, context->recipient);
-        return -1;
-    }
-    context->recipient_set = true;
-    memmove(context->recipient, context->leg_recipient, ADDRESS_LENGTH);
+
     context->leg_recipient_set = false;
-    return 0;
+    return reconcile_recipient(context, context->leg_recipient, must_match);
 }
 
 // The leg's output turned out to be internal plumbing (consumed / cancelled):
@@ -722,6 +746,11 @@ static int v4_prepare_action_param(context_t *context) {
 static int v4_advance_pathkey(context_t *context) {
     ++context->v4_pathkey_index;
     if (context->v4_pathkey_index >= context->v4_pathkey_count) {
+        if (context->leg_v211) {
+            // UR 2.1.1: a minHopPriceX36 array trails the path
+            context->next_param = INPUT_V4_SWAP_MINHOP_LENGTH;
+            return 0;
+        }
         ++context->v4_current_action;
         return v4_prepare_action_param(context);
     }
@@ -745,17 +774,26 @@ static int handle_v4_currency(context_t *context,
         if (this_io->asset_type == UNSET) {
             this_io->asset_type = ETH;
             memmove(this_io->amount, this_io->tmp_amount, PARAMETER_LENGTH);
-        } else if (this_io->asset_type == ETH) {
+            return 0;
+        }
+        if (this_io->asset_type == ETH) {
             if (add_parameters(this_io->amount, this_io->tmp_amount) != 0) {
                 PRINTF("Error: overflow adding native amounts\n");
                 return -1;
             }
-        } else {
+            return 0;
+        }
+        // A native edge in a route that mixes native V4 legs with wrapped
+        // V2 / V3 legs (converted mid-route by a custody wrap / unwrap):
+        // resolve it through the wrapped address so it merges, consumes or
+        // dangles exactly like the wrapped side of the same funds.
+        const uint8_t *wrapped = wrapped_native_address(context);
+        if (wrapped == NULL) {
             PRINTF("Error: native currency conflicts with existing %s token\n",
                    IO_NAME(direction));
             return -1;
         }
-        return 0;
+        memmove(address, wrapped, ADDRESS_LENGTH);
     }
 
     return handle_address_reception(context,
@@ -766,39 +804,82 @@ static int handle_v4_currency(context_t *context,
                                     direction);
 }
 
-// Apply a V4 TAKE recipient. The V4 recipient lives in the (last) TAKE action
-// rather than before the swap, so it is applied directly here. The ADDRESS_THIS
-// sentinel (0x..02) and the router address mean the output stays in the router's
-// custody and the user-facing recipient comes from a later SWEEP / UNWRAP.
-static int apply_v4_take_recipient(context_t *context,
-                                   const uint8_t parameter[PARAMETER_LENGTH]) {
-    const uint8_t *address = parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH);
+// The path offset within a V2 / V3 swap input reveals the UR layout: 0xa0 is
+// the 2.0 head {recipient, amount, amount, path, payerIsUser}; UR 2.1.1 adds a
+// trailing minHopPriceX36 array, shifting the path to 0xc0. Anything else is
+// an unknown layout: reject rather than misparse.
+static int set_layout_from_path_offset(context_t *context,
+                                       const uint8_t parameter[PARAMETER_LENGTH]) {
+    switch (U2BE(parameter, PARAMETER_LENGTH - 2)) {
+        case 0xa0:
+            context->leg_v211 = false;
+            return 0;
+        case 0xc0:
+            context->leg_v211 = true;
+            return 0;
+        default:
+            PRINTF("Error: unexpected path offset (unknown UR layout)\n");
+            return -1;
+    }
+}
 
-    if (is_router_address(address)) {
-        PRINTF("V4 take to router: custody, recipient decided later\n");
+// A V2 / V3 swap command's path is fully parsed: in the UR 2.1.1 layout a
+// minHopPriceX36 array trails the path and must be skipped before the next
+// command; in the 2.0 layout the path is the input's last element.
+static int finish_swap_command(context_t *context) {
+    if (context->leg_v211) {
+        context->next_param = INPUT_MINHOP_LENGTH;
         return 0;
     }
-    // ADDRESS_THIS sentinel: the router keeps custody.
-    bool is_address_this = true;
-    for (uint8_t i = 0; i < ADDRESS_LENGTH - 1; ++i) {
-        if (address[i] != 0) {
-            is_address_this = false;
+    ++context->current_command;
+    return prepare_reading_next_input(context);
+}
+
+// Is a custody WRAP / UNWRAP mid-route conversion plumbing? Only when a
+// previous leg left a dangling wrapped-native output edge for it to convert
+// (a native V4 leg chained with a wrapped V2 / V3 leg); a custody wrap or
+// unwrap with no such pending funds stays invalid.
+static bool wrap_unwrap_is_plumbing(const context_t *context) {
+    const uint8_t *wrapped = wrapped_native_address(context);
+    return wrapped != NULL && context->intermediate.intermediate_status == INTERMEDIATE_OUTPUT &&
+           memcmp(context->intermediate.address, wrapped, ADDRESS_LENGTH) == 0;
+}
+
+// Does a V4 TAKE currency name the committed swap output? Native (address 0)
+// names an ETH output; the io matcher handles ERC20s (an ETH / WETH typed
+// output is deliberately not matched by its wrapped address here: a take of
+// the wrapped ERC20 is a different flow than a native take).
+static bool v4_take_names_output(context_t *context,
+                                 const uint8_t currency[ADDRESS_LENGTH]) {
+    bool is_native = true;
+    for (uint8_t i = 0; i < ADDRESS_LENGTH; ++i) {
+        if (currency[i] != 0) {
+            is_native = false;
             break;
         }
     }
-    if (is_address_this && address[ADDRESS_LENGTH - 1] == 0x02) {
-        PRINTF("V4 take to ADDRESS_THIS: custody, recipient decided later\n");
-        return 0;
+    if (is_native) {
+        return context->output.asset_type == ETH;
     }
+    return address_matches_io(context, currency, &context->output, false);
+}
 
-    if (context->recipient_set &&
-        memcmp(context->recipient, address, ADDRESS_LENGTH) != 0) {
-        PRINTF("Error: conflicting V4 take recipient\n");
-        return -1;
+// Apply a V4 TAKE recipient. The V4 recipient lives in the (last) TAKE action
+// rather than before the swap. A take of the swap's output currency carries
+// the displayed recipient and is reconciled directly (custody sentinels and
+// user matching handled by reconcile_recipient). A take of any other currency
+// routes an intermediate onward — typically straight to the next leg's pool —
+// so it is stashed like a V2 / V3 leg recipient and discarded when a later leg
+// consumes that currency.
+static int apply_v4_take_recipient(context_t *context,
+                                   const uint8_t parameter[PARAMETER_LENGTH]) {
+    if (v4_take_names_output(context, context->v4_first_currency)) {
+        return reconcile_recipient(context,
+                                   parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                   true);
     }
-    context->recipient_set = true;
-    context->recipient_sticky = true;
-    memmove(context->recipient, address, ADDRESS_LENGTH);
+    PRINTF("V4 take of a non-output currency: chaining plumbing\n");
+    stash_leg_recipient(context, parameter);
     return 0;
 }
 
@@ -874,21 +955,30 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_WRAP_ETH_RECIPIENT:
             PRINTF("Interpreting as INPUT_WRAP_ETH_RECIPIENT\n");
             PRINTF("Checking WRAP recipient\n");
-            if (!is_router_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH))) {
-                if (!is_sender_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                                       context->own_address)) {
-                    PRINTF("Wrap recipient is not the router address or the sender\n");
-                    if (handle_recipient(msg->parameter, context) != 0) {
-                        PRINTF("Error: handle_recipient failed\n");
-                        msg->result = ETH_PLUGIN_RESULT_ERROR;
-                    }
+            if (is_router_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH))) {
+                if (context->input.asset_type != UNSET && context->input.asset_type != ETH &&
+                    context->input.asset_type != WETH && wrap_unwrap_is_plumbing(context)) {
+                    // Mid-route wrap: the native intermediate a V4 leg left
+                    // dangling is wrapped while staying in router custody so a
+                    // wrapped V2 / V3 leg can consume it; not the displayed input
+                    PRINTF("Wrap of a dangling native intermediate in custody: plumbing\n");
+                    context->wrap_unwrap_plumbing = true;
+                }
+            } else if (!is_sender_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                          context->own_address)) {
+                PRINTF("Wrap recipient is not the router address or the sender\n");
+                if (handle_recipient(msg->parameter, context) != 0) {
+                    PRINTF("Error: handle_recipient failed\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
                 }
             }
             context->next_param = INPUT_WRAP_ETH_AMOUNT;
             break;
         case INPUT_WRAP_ETH_AMOUNT:
             PRINTF("Interpreting as INPUT_WRAP_ETH_AMOUNT\n");
-            if (add_wrap_or_unwrap(msg->parameter, context, INPUT) != 0) {
+            if (context->wrap_unwrap_plumbing) {
+                context->wrap_unwrap_plumbing = false;
+            } else if (add_wrap_or_unwrap(msg->parameter, context, INPUT) != 0) {
                 PRINTF("Error in add_wrap_or_unwrap for input\n");
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
             }
@@ -914,16 +1004,26 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 // We are returning back to the user the unused amount of WETH
                 PRINTF("unwrap sweep received\n");
                 context->unwrap_sweep_received = true;
+            } else if (is_router_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH)) &&
+                       context->output.asset_type != UNSET && context->output.asset_type != ETH &&
+                       context->output.asset_type != WETH && wrap_unwrap_is_plumbing(context)) {
+                // Mid-route unwrap: the wrapped intermediate a leg left
+                // dangling is converted to native while staying in router
+                // custody (a following V4 leg consumes it as currency 0);
+                // not the displayed output
+                PRINTF("Unwrap of a dangling wrapped intermediate in custody: plumbing\n");
+                context->wrap_unwrap_plumbing = true;
             } else {
                 PRINTF("Checking UNWRAP recipient\n");
-                if (!context->recipient_set || !is_router_address(context->recipient)) {
-                    PRINTF("Received a final unwrap but the swap recipient was not the router\n");
+                // The unwrapped output goes to this recipient: reconcile with
+                // the committed one (router custody gets overridden; in mixed
+                // native-out splits a V4 take already delivered the same user)
+                if (reconcile_recipient(context,
+                                        msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                        true) != 0) {
+                    PRINTF("Received a final unwrap conflicting with the swap recipient\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 } else {
-                    PRINTF("Override recipient\n");
-                    memmove(context->recipient,
-                            msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                            ADDRESS_LENGTH);
                     context->recipient_sticky = true;
                 }
             }
@@ -931,7 +1031,9 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_UNWRAP_WETH_AMOUNT:
             PRINTF("Interpreting as INPUT_UNWRAP_WETH_AMOUNT\n");
-            if (context->input.asset_type != ETH) {
+            if (context->wrap_unwrap_plumbing) {
+                context->wrap_unwrap_plumbing = false;
+            } else if (context->input.asset_type != ETH) {
                 if (add_wrap_or_unwrap(msg->parameter, context, OUTPUT) != 0) {
                     PRINTF("Error in add_wrap_or_unwrap for output\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -1032,10 +1134,18 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET\n");
+            if (set_layout_from_path_offset(context, msg->parameter) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                break;
+            }
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER\n");
+            context->next_param = context->leg_v211 ? INPUT_V2_SWAP_EXACT_IN_MINHOP_OFFSET
+                                                    : INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH;
+            break;
+        case INPUT_V2_SWAP_EXACT_IN_MINHOP_OFFSET:  // minHop array offset; skip
             context->next_param = INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH;
             break;
         case INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH:
@@ -1057,10 +1167,9 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 break;
             }
 
-            // If we have finished reading this path, prepare reading input for next command
+            // Path done: skip the 2.1.1 minHop tail if present, else next command
             if (finished) {
-                ++context->current_command;
-                if (prepare_reading_next_input(context) != 0) {
+                if (finish_swap_command(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 }
             }
@@ -1095,10 +1204,18 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET\n");
+            if (set_layout_from_path_offset(context, msg->parameter) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                break;
+            }
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER\n");
+            context->next_param = context->leg_v211 ? INPUT_V2_SWAP_EXACT_OUT_MINHOP_OFFSET
+                                                    : INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH;
+            break;
+        case INPUT_V2_SWAP_EXACT_OUT_MINHOP_OFFSET:  // minHop array offset; skip
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH:
@@ -1120,10 +1237,9 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 break;
             }
 
-            // If we have finished reading this path, prepare reading input for next command
+            // Path done: skip the 2.1.1 minHop tail if present, else next command
             if (finished) {
-                ++context->current_command;
-                if (prepare_reading_next_input(context) != 0) {
+                if (finish_swap_command(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 }
             }
@@ -1158,10 +1274,18 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET\n");
+            if (set_layout_from_path_offset(context, msg->parameter) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                break;
+            }
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER\n");
+            context->next_param = context->leg_v211 ? INPUT_V3_SWAP_EXACT_IN_MINHOP_OFFSET
+                                                    : INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH;
+            break;
+        case INPUT_V3_SWAP_EXACT_IN_MINHOP_OFFSET:  // minHop array offset; skip
             context->next_param = INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH;
             break;
         case INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH:
@@ -1182,10 +1306,9 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
                 break;
             }
-            // If we have finished reading this path, prepare reading input for next command
+            // Path done: skip the 2.1.1 minHop tail if present, else next command
             if (finished) {
-                ++context->current_command;
-                if (prepare_reading_next_input(context) != 0) {
+                if (finish_swap_command(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 }
             }
@@ -1220,10 +1343,18 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET\n");
+            if (set_layout_from_path_offset(context, msg->parameter) != 0) {
+                msg->result = ETH_PLUGIN_RESULT_ERROR;
+                break;
+            }
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER\n");
+            context->next_param = context->leg_v211 ? INPUT_V3_SWAP_EXACT_OUT_MINHOP_OFFSET
+                                                    : INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH;
+            break;
+        case INPUT_V3_SWAP_EXACT_OUT_MINHOP_OFFSET:  // minHop array offset; skip
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH:
@@ -1245,14 +1376,39 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 msg->result = ETH_PLUGIN_RESULT_ERROR;
                 break;
             }
-            // If we have finished reading this path, prepare reading input for next command
+            // Path done: skip the 2.1.1 minHop tail if present, else next command
             if (finished) {
+                if (finish_swap_command(context) != 0) {
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                }
+            }
+        } break;
+
+            // ##################################################
+            // Skipping a UR 2.1.1 minHopPriceX36 array (V2 / V3)
+            // ##################################################
+
+        case INPUT_MINHOP_LENGTH:
+            PRINTF("Interpreting as INPUT_MINHOP_LENGTH\n");
+            context->minhop_skip = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (context->minhop_skip == 0) {
+                ++context->current_command;
+                if (prepare_reading_next_input(context) != 0) {
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                }
+            } else {
+                context->next_param = INPUT_MINHOP_SKIP;
+            }
+            break;
+        case INPUT_MINHOP_SKIP:
+            --context->minhop_skip;
+            if (context->minhop_skip == 0) {
                 ++context->current_command;
                 if (prepare_reading_next_input(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 }
             }
-        } break;
+            break;
 
             // ###################
             // Parsing SWEEP
@@ -1292,14 +1448,16 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             PRINTF("Interpreting as INPUT_SWEEP_RECIPIENT\n");
             context->next_param = INPUT_SWEEP_AMOUNT;
             if (!context->skip_sweep_once) {
-                if (!context->recipient_set || !is_router_address(context->recipient)) {
-                    PRINTF("Received a sweep but the swap recipient was not the router\n");
+                // The swept output goes to this recipient: reconcile with the
+                // committed one (router custody gets overridden; in mixed
+                // splits a V4 take already delivered the same user)
+                if (reconcile_recipient(context,
+                                        msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                                        true) != 0) {
+                    PRINTF("Received a sweep conflicting with the swap recipient\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 } else {
                     context->recipient_sticky = true;
-                    memmove(context->recipient,
-                            msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                            ADDRESS_LENGTH);
                 }
             }
             break;
@@ -1392,16 +1550,26 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             context->next_param = INPUT_V4_SWAP_PATH_OFFSET;
             break;
         case INPUT_V4_SWAP_PATH_OFFSET:
-            // Offset of the PathKey[] path within the swap struct. In the UR 2.0
-            // layout the struct head is exactly {currency, path, amountSpecified,
-            // amountLimit} so this offset is 0x80. UR 2.1.1 inserts a minHopPriceX36
-            // array, shifting it to 0xa0; that layout is not supported here (it is
-            // tracked separately), so reject rather than misparse.
-            if (U2BE(msg->parameter, PARAMETER_LENGTH - 2) != 0x80) {
-                PRINTF("Error: unexpected V4 path offset (unsupported UR layout)\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-                break;
+            // Offset of the PathKey[] path within the swap struct. The UR 2.0
+            // head is {currency, path, amountSpecified, amountLimit} (0x80);
+            // UR 2.1.1 inserts a minHopPriceX36 array after the path, shifting
+            // it to 0xa0. Anything else is an unknown layout: reject.
+            switch (U2BE(msg->parameter, PARAMETER_LENGTH - 2)) {
+                case 0x80:
+                    context->leg_v211 = false;
+                    context->next_param = INPUT_V4_SWAP_AMOUNT_SPECIFIED;
+                    break;
+                case 0xa0:
+                    context->leg_v211 = true;
+                    context->next_param = INPUT_V4_SWAP_MINHOP_OFFSET;
+                    break;
+                default:
+                    PRINTF("Error: unexpected V4 path offset (unknown UR layout)\n");
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                    break;
             }
+            break;
+        case INPUT_V4_SWAP_MINHOP_OFFSET:  // minHop array offset; skip
             context->next_param = INPUT_V4_SWAP_AMOUNT_SPECIFIED;
             break;
         case INPUT_V4_SWAP_AMOUNT_SPECIFIED:
@@ -1501,6 +1669,27 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 }
             }
             break;
+        case INPUT_V4_SWAP_MINHOP_LENGTH:  // UR 2.1.1 minHopPriceX36 array
+            PRINTF("Interpreting as INPUT_V4_SWAP_MINHOP_LENGTH\n");
+            context->minhop_skip = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
+            if (context->minhop_skip == 0) {
+                ++context->v4_current_action;
+                if (v4_prepare_action_param(context) != 0) {
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                }
+            } else {
+                context->next_param = INPUT_V4_SWAP_MINHOP_SKIP;
+            }
+            break;
+        case INPUT_V4_SWAP_MINHOP_SKIP:
+            --context->minhop_skip;
+            if (context->minhop_skip == 0) {
+                ++context->v4_current_action;
+                if (v4_prepare_action_param(context) != 0) {
+                    msg->result = ETH_PLUGIN_RESULT_ERROR;
+                }
+            }
+            break;
 
             // ---- V4 SETTLE / SETTLE_ALL param (skipped: amounts come from the swap) ----
         case INPUT_V4_SETTLE_PARAM_LENGTH: {
@@ -1537,7 +1726,13 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 context->next_param = INPUT_V4_TAKE_SKIP;
             }
         } break;
-        case INPUT_V4_TAKE_CURRENCY:  // currency (leg output already resolved); skip
+        case INPUT_V4_TAKE_CURRENCY:
+            // Save the taken currency: it decides below whether the recipient
+            // is the displayed one (take of the output) or chaining plumbing.
+            // v4_first_currency is free again once the SWAP action is parsed.
+            memmove(context->v4_first_currency,
+                    msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+                    ADDRESS_LENGTH);
             --context->v4_item_read;
             context->next_param = INPUT_V4_TAKE_RECIPIENT;
             break;

@@ -80,6 +80,7 @@ typedef enum parameter_e {
     INPUT_V2_SWAP_EXACT_IN_AMOUNT_OUT_MIN,
     INPUT_V2_SWAP_EXACT_IN_PATH_OFFSET,
     INPUT_V2_SWAP_EXACT_IN_PAYER_IS_USER,
+    INPUT_V2_SWAP_EXACT_IN_MINHOP_OFFSET,  // UR 2.1.1 layout only
     INPUT_V2_SWAP_EXACT_IN_PATH_LENGTH,
     INPUT_V2_SWAP_EXACT_IN_PATH,
 
@@ -90,6 +91,7 @@ typedef enum parameter_e {
     INPUT_V2_SWAP_EXACT_OUT_AMOUNT_IN_MAX,
     INPUT_V2_SWAP_EXACT_OUT_PATH_OFFSET,
     INPUT_V2_SWAP_EXACT_OUT_PAYER_IS_USER,
+    INPUT_V2_SWAP_EXACT_OUT_MINHOP_OFFSET,  // UR 2.1.1 layout only
     INPUT_V2_SWAP_EXACT_OUT_PATH_LENGTH,
     INPUT_V2_SWAP_EXACT_OUT_PATH,
 
@@ -100,6 +102,7 @@ typedef enum parameter_e {
     INPUT_V3_SWAP_EXACT_IN_AMOUNT_OUT_MIN,
     INPUT_V3_SWAP_EXACT_IN_PATH_OFFSET,
     INPUT_V3_SWAP_EXACT_IN_PAYER_IS_USER,
+    INPUT_V3_SWAP_EXACT_IN_MINHOP_OFFSET,  // UR 2.1.1 layout only
     INPUT_V3_SWAP_EXACT_IN_PATH_LENGTH,
     INPUT_V3_SWAP_EXACT_IN_PATH,
 
@@ -110,8 +113,14 @@ typedef enum parameter_e {
     INPUT_V3_SWAP_EXACT_OUT_AMOUNT_IN_MAX,
     INPUT_V3_SWAP_EXACT_OUT_PATH_OFFSET,
     INPUT_V3_SWAP_EXACT_OUT_PAYER_IS_USER,
+    INPUT_V3_SWAP_EXACT_OUT_MINHOP_OFFSET,  // UR 2.1.1 layout only
     INPUT_V3_SWAP_EXACT_OUT_PATH_LENGTH,
     INPUT_V3_SWAP_EXACT_OUT_PATH,
+
+    // Skipping the minHopPriceX36 array trailing a UR 2.1.1 V2 / V3 path
+    // (shared epilogue: advances to the next command when done).
+    INPUT_MINHOP_LENGTH,
+    INPUT_MINHOP_SKIP,
 
     // Parsing SWEEP
     INPUT_SWEEP_LENGTH,
@@ -134,6 +143,7 @@ typedef enum parameter_e {
     INPUT_V4_SWAP_TUPLE_OFFSET,
     INPUT_V4_SWAP_FIRST_CURRENCY,
     INPUT_V4_SWAP_PATH_OFFSET,
+    INPUT_V4_SWAP_MINHOP_OFFSET,  // UR 2.1.1 layout only
     INPUT_V4_SWAP_AMOUNT_SPECIFIED,
     INPUT_V4_SWAP_AMOUNT_LIMIT,
     INPUT_V4_SWAP_PATH_LENGTH,
@@ -145,6 +155,10 @@ typedef enum parameter_e {
     INPUT_V4_SWAP_PATHKEY_HOOKDATA_OFFSET,
     INPUT_V4_SWAP_PATHKEY_HOOKDATA_LENGTH,
     INPUT_V4_SWAP_PATHKEY_HOOKDATA_SKIP,
+    // Skipping the minHopPriceX36 array trailing a UR 2.1.1 V4 path
+    // (returns to the next V4 action when done).
+    INPUT_V4_SWAP_MINHOP_LENGTH,
+    INPUT_V4_SWAP_MINHOP_SKIP,
 
     // Parsing one V4 SETTLE / SETTLE_ALL param (skipped — amounts come from the
     // swap action).
@@ -311,6 +325,17 @@ typedef struct context_s {
     io_data_t output;
 
     bool unwrap_sweep_received;
+    // Set when a custody wrap / unwrap converts an intermediate between a native
+    // V4 leg and a wrapped V2 / V3 leg: its amount word is plumbing, not the
+    // displayed input / output.
+    bool wrap_unwrap_plumbing;
+
+    // ===== UR 2.1.1 layout (minHopPriceX36) =====
+    // Set per swap command / V4 swap param when its path offset reveals the
+    // UR 2.1.1 layout: one extra head word (the minHop array offset) and a
+    // trailing uint256[] to skip after the path.
+    bool leg_v211;
+    uint16_t minhop_skip;  // minHop array words left to skip
 
     uint16_t pay_portion_amount;
     bool sweep_received;
