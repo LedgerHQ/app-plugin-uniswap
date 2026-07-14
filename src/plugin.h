@@ -160,9 +160,12 @@ typedef enum parameter_e {
     INPUT_V4_SWAP_MINHOP_LENGTH,
     INPUT_V4_SWAP_MINHOP_SKIP,
 
-    // Parsing one V4 SETTLE / SETTLE_ALL param (skipped — amounts come from the
-    // swap action).
+    // Parsing one V4 SETTLE / SETTLE_ALL param. A SETTLE with an explicit
+    // amount carries its leg's input amount (the following swap uses
+    // OPEN_DELTA); SETTLE_ALL and open / contract-balance settles are skipped.
     INPUT_V4_SETTLE_PARAM_LENGTH,
+    INPUT_V4_SETTLE_CURRENCY,
+    INPUT_V4_SETTLE_AMOUNT,
     INPUT_V4_SETTLE_SKIP,
 
     // Parsing one V4 TAKE / TAKE_ALL param (carries the leg-output recipient).
@@ -318,6 +321,10 @@ typedef struct context_s {
     // The swap struct's leading currency (input for exact-in, output for exact-out),
     // stashed until amounts are read and reception can be fed.
     uint8_t v4_first_currency[ADDRESS_LENGTH];
+    // An explicit SETTLE amount waiting for its swap: production routes carry
+    // the leg input in the SETTLE when the swap itself uses OPEN_DELTA (0).
+    bool v4_settle_pending;
+    uint8_t v4_settle_amount[INT256_LENGTH];
 
     // The data for the input of the swap
     io_data_t input;

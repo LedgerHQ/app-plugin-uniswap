@@ -783,6 +783,24 @@ static int handle_v4_currency(context_t *context,
             }
             return 0;
         }
+        if (opposite_io->asset_type == ETH) {
+            // This native edge consumes the native opposite side (typically
+            // the output of a mid-route unwrap crossing back into V4): same
+            // funds, same bookkeeping as an address match on the opposite io.
+            PRINTF("V4 native %s consumes the native %s\n",
+                   IO_NAME(direction),
+                   OPPOSITE_IO_NAME(direction));
+            opposite_io->asset_type = UNSET;
+            memset(opposite_io->amount, 0, INT256_LENGTH);
+            if (direction == INPUT) {
+                if (!context->recipient_sticky) {
+                    context->recipient_set = false;
+                }
+            } else {
+                drop_leg_recipient(context);
+            }
+            return 0;
+        }
         // A native edge in a route that mixes native V4 legs with wrapped
         // V2 / V3 legs (converted mid-route by a custody wrap / unwrap):
         // resolve it through the wrapped address so it merges, consumes or
@@ -957,12 +975,23 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             PRINTF("Checking WRAP recipient\n");
             if (is_router_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH))) {
                 if (context->input.asset_type != UNSET && context->input.asset_type != ETH &&
-                    context->input.asset_type != WETH && wrap_unwrap_is_plumbing(context)) {
-                    // Mid-route wrap: the native intermediate a V4 leg left
-                    // dangling is wrapped while staying in router custody so a
-                    // wrapped V2 / V3 leg can consume it; not the displayed input
-                    PRINTF("Wrap of a dangling native intermediate in custody: plumbing\n");
-                    context->wrap_unwrap_plumbing = true;
+                    context->input.asset_type != WETH) {
+                    if (wrap_unwrap_is_plumbing(context)) {
+                        // Mid-route wrap: the native intermediate a V4 leg left
+                        // dangling is wrapped while staying in router custody so
+                        // a wrapped V2 / V3 leg can consume it; not the
+                        // displayed input
+                        PRINTF("Wrap of a dangling native intermediate in custody: plumbing\n");
+                        context->wrap_unwrap_plumbing = true;
+                    } else if (context->output.asset_type == ETH) {
+                        // Same conversion when the native edge sits in the
+                        // output slot (a V4 leg's native far side, chained
+                        // onward): it is now wrapped, awaiting consumption by
+                        // the next leg
+                        PRINTF("Wrap of the native output edge in custody: plumbing\n");
+                        context->output.asset_type = WETH;
+                        context->wrap_unwrap_plumbing = true;
+                    }
                 }
             } else if (!is_sender_address(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           context->own_address)) {
@@ -1485,6 +1514,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_V4_LENGTH:
             // bytes length of this V4_SWAP command input; skip
             PRINTF("Interpreting as INPUT_V4_LENGTH\n");
+            context->v4_settle_pending = false;
             context->next_param = INPUT_V4_ACTIONS_OFFSET;
             break;
         case INPUT_V4_ACTIONS_OFFSET:  // offset of `actions` (canonical 0x40); skip
@@ -1575,10 +1605,19 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
         case INPUT_V4_SWAP_AMOUNT_SPECIFIED:
             // exact-in: amountIn (input); exact-out: amountOut (output)
             if (context->v4_leg_exact_in) {
-                memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
+                if (allzeroes(msg->parameter, PARAMETER_LENGTH) && context->v4_settle_pending) {
+                    // OPEN_DELTA swap: the input amount was carried by its SETTLE
+                    memmove(context->input.tmp_amount,
+                            context->v4_settle_amount,
+                            PARAMETER_LENGTH);
+                } else {
+                    memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
+                }
             } else {
                 memmove(context->output.tmp_amount, msg->parameter, PARAMETER_LENGTH);
             }
+            // Each settle pairs with the next swap: consumed or superseded here
+            context->v4_settle_pending = false;
             context->next_param = INPUT_V4_SWAP_AMOUNT_LIMIT;
             break;
         case INPUT_V4_SWAP_AMOUNT_LIMIT: {
@@ -1691,11 +1730,17 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
             break;
 
-            // ---- V4 SETTLE / SETTLE_ALL param (skipped: amounts come from the swap) ----
+            // ---- V4 SETTLE / SETTLE_ALL param ----
         case INPUT_V4_SETTLE_PARAM_LENGTH: {
             uint16_t len = U2BE(msg->parameter, PARAMETER_LENGTH - 2);
             context->v4_item_read = (len + (PARAMETER_LENGTH - 1)) / PARAMETER_LENGTH;
-            if (context->v4_item_read == 0) {
+            // SETTLE = (currency, amount, payerIsUser): an explicit amount is
+            // the leg's input (its swap then uses OPEN_DELTA). SETTLE_ALL only
+            // carries a limit: skip it.
+            if (context->v4_actions[context->v4_current_action] == V4_SETTLE &&
+                context->v4_item_read >= 3) {
+                context->next_param = INPUT_V4_SETTLE_CURRENCY;
+            } else if (context->v4_item_read == 0) {
                 ++context->v4_current_action;
                 if (v4_prepare_action_param(context) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
@@ -1704,6 +1749,22 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 context->next_param = INPUT_V4_SETTLE_SKIP;
             }
         } break;
+        case INPUT_V4_SETTLE_CURRENCY:
+            // Always the leg's input currency, which the swap's leading
+            // currency repeats: no need to keep it.
+            --context->v4_item_read;
+            context->next_param = INPUT_V4_SETTLE_AMOUNT;
+            break;
+        case INPUT_V4_SETTLE_AMOUNT:
+            --context->v4_item_read;
+            if (!allzeroes(msg->parameter, PARAMETER_LENGTH) &&
+                !is_contract_balance(msg->parameter)) {
+                // Explicit amount: hold it for the swap that follows
+                memmove(context->v4_settle_amount, msg->parameter, PARAMETER_LENGTH);
+                context->v4_settle_pending = true;
+            }
+            context->next_param = INPUT_V4_SETTLE_SKIP;
+            break;
         case INPUT_V4_SETTLE_SKIP:
             --context->v4_item_read;
             if (context->v4_item_read == 0) {
