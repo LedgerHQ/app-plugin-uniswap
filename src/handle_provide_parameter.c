@@ -1659,9 +1659,13 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             }
             break;
         case INPUT_V4_SWAP_PATHKEY_CURRENCY:
-            // Only the last PathKey's currency is the leg's far side (output for
-            // exact-in, input for exact-out); intermediate hops are not displayed.
-            if (context->v4_pathkey_index + 1 == context->v4_pathkey_count) {
+            // Only one PathKey currency is the leg's far side; the others are
+            // undisplayed intermediate hops. Exact-in walks the path forward
+            // (far side = last PathKey = output); exact-out is iterated
+            // backward by the router (far side = first PathKey = input).
+            if (context->v4_leg_exact_in
+                    ? (context->v4_pathkey_index + 1 == context->v4_pathkey_count)
+                    : (context->v4_pathkey_index == 0)) {
                 uint8_t addr[ADDRESS_LENGTH];
                 memmove(addr,
                         msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
