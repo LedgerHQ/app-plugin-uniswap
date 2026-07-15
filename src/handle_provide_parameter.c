@@ -183,7 +183,7 @@ static bool address_partially_matches_io(const uint8_t *address,
         return false;
     }
 
-    const uint8_t(*ref)[ADDRESS_LENGTH];
+    const uint8_t (*ref)[ADDRESS_LENGTH];
     if (io->asset_type == WETH || io->asset_type == ETH) {
         PRINTF("Comparing with WETH\n");
         ref = &weth_address;
