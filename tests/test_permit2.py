@@ -21,12 +21,14 @@ class TestPermit2:
         fake_permit2_permit_batch = [crafter.craft_fake_PERMIT2_PERMIT_BATCH()]
         fake_permit2_permit = [crafter.craft_fake_PERMIT2_PERMIT()]
         fake_permit2_transfer_from_batch = [crafter.craft_fake_PERMIT2_TRANSFER_FROM_BATCH()]
+        fake_permit2_transfer_from = [crafter.craft_fake_PERMIT2_TRANSFER_FROM()]
 
         # They all have the same display
         for contract in [usdt_to_wojak_exact_in_v2,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_permit_batch,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_permit,
                          usdt_to_wojak_exact_in_v2 + fake_permit2_transfer_from_batch,
+                         fake_permit2_transfer_from + usdt_to_wojak_exact_in_v2,
                         ]:
             uniswap_client.set_external_plugin()
             with uniswap_client.send_sign_request(contract):

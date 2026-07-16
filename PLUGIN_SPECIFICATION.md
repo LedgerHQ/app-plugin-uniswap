@@ -20,50 +20,44 @@ For the smart contracts implemented, the functions covered by the plugin shall b
 
 ## COMMANDS supported
 
-Subset of commands from Universal Router v2.0:
+Subset of commands from the Universal Router:
 https://docs.uniswap.org/contracts/universal-router/technical-reference#command-inputs
 
 | Command |
 | ---- |
-| V2_SWAP_EXACT_IN | 
+| V2_SWAP_EXACT_IN |
 | V2_SWAP_EXACT_OUT |
 | V3_SWAP_EXACT_IN |
 | V3_SWAP_EXACT_OUT |
+| V4_SWAP |
 | WRAP_ETH |
 | UNWRAP_ETH |
 | PERMIT2_PERMIT_BATCH |
+| PERMIT2_TRANSFER_FROM |
 | PERMIT2_TRANSFER_FROM_BATCH |
 | PERMIT2_PERMIT |
 | PAY_PORTION |
+| SWEEP |
 
-## Limitation
+Both the Universal Router 2.0 and 2.1.1 input layouts are supported: the
+2.1.1 layout appends a `minHopPriceX36` array to every swap input, and the
+plugin detects which layout is in use per swap input from its path offset
+(rejecting unknown layouts rather than misparsing them).
 
-Due to memory space limitations, it is currently not possible to display and sign a swap with a version split path
-It IS possible to combine several swaps of different versions if their path is not split
-```
-(Let's note O the origin asset and G the goal asset, and I an intermediate asset)
+Within V4_SWAP, the path-form swap actions (`SWAP_EXACT_IN`, `SWAP_EXACT_OUT`)
+plus `SETTLE`, `SETTLE_ALL`, `TAKE` and `TAKE_ALL` are supported. The
+`*_SINGLE` swap action forms and all other actions are rejected.
 
-The following scenarios are ALLOWED
---- 
-O -> G in V2_SWAP
-O -> G in V3_SWAP
----
-O -> G in V2_SWAP
-O -> I -> ... -> G in V2_SWAP
-O -> G in V3_SWAP
-O -> I -> ... -> G in V3_SWAP
----
+## Route support
 
-The following scenarios are NOT allowed
----
-O -> ... -> I in V3_SWAP
-I -> ... -> G in V2_SWAP
----
-O -> ... -> I in V2_SWAP
-I -> ... -> G in V3_SWAP
----
-O -> G in V2_SWAP
-O -> ... -> I in V2_SWAP
-I -> ... -> G in V3_SWAP
----
-```
+The plugin collapses the commands of a transaction into a single displayed
+swap: one input asset and one output asset (plus swap type, amounts, recipient
+and optional interface fee). Multi-hop paths, split routes (several commands
+sharing the same input or output asset) and mixed-version routes (V2 / V3 / V4
+legs combined, including legs chained through another version's pool or
+through the native / wrapped boundary) are all supported, as long as the
+route collapses to one input and one output asset.
+
+Intermediate assets are never displayed. Routes that do not collapse to a
+single input / output pair, exceed 16 commands, or contain unsupported
+commands are rejected.
