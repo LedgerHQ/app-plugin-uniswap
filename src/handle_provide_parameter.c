@@ -89,6 +89,7 @@ static uint8_t prepare_reading_next_input(context_t *context) {
                 break;
             case PERMIT2_PERMIT_BATCH:
             case PERMIT2_TRANSFER_FROM_BATCH:
+            case PERMIT2_TRANSFER_FROM:
             case PERMIT2_PERMIT:
                 PRINTF("Preparing to read PERMIT2_X related command\n");
                 context->next_param = INPUT_PERMIT2_LENGTH;
@@ -130,6 +131,13 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
         io_data = &context->input;
     }
 
+    // Without wrapped-native knowledge for this chain we cannot merge the wrap / unwrap
+    // with its swap leg. Refuse rather than risk a wrong display.
+    if (!has_wrapped_native(context)) {
+        PRINTF("Error: no wrapped native token known for this chain\n");
+        return -1;
+    }
+
     PRINTF("io_data->asset_type %d\n", io_data->asset_type);
     if (io_data->asset_type == UNSET) {
         // Nothing received yet, we indicate we received data and set it's type as ETH
@@ -157,9 +165,11 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
 }
 
 // Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
-static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
+static int set_token(const context_t *context,
+                     const uint8_t address[ADDRESS_LENGTH],
+                     io_data_t *io_data) {
     PRINTF("Setting token\n");
-    if (token_is_weth(address)) {
+    if (token_is_weth(context, address)) {
         PRINTF("Token to set is WETH\n");
         io_data->asset_type = WETH;
     } else {
@@ -171,7 +181,8 @@ static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) 
     return 0;
 }
 
-static bool address_partially_matches_io(const uint8_t *address,
+static bool address_partially_matches_io(const context_t *context,
+                                         const uint8_t *address,
                                          io_data_t *io,
                                          bool accept_eth,
                                          uint8_t offset,
@@ -183,23 +194,29 @@ static bool address_partially_matches_io(const uint8_t *address,
         return false;
     }
 
-    const uint8_t (*ref)[ADDRESS_LENGTH];
+    const uint8_t *ref;
     if (io->asset_type == WETH || io->asset_type == ETH) {
         PRINTF("Comparing with WETH\n");
-        ref = &weth_address;
+        ref = wrapped_native_address(context);
+        if (ref == NULL) {
+            // No wrapped-native knowledge for this chain: nothing can match ETH / WETH
+            return false;
+        }
     } else {
         PRINTF("Comparing with saved token\n");
-        ref = &io->u.address;
+        ref = io->u.address;
     }
     PRINTF("Trying to match : %.*H\n", length, address);
-    PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, *ref, offset);
-    return (memcmp(*ref + offset, address, length) == 0);
+    PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, ref, offset);
+    return (memcmp(ref + offset, address, length) == 0);
 }
 
-static bool address_matches_io(const uint8_t address[ADDRESS_LENGTH],
+static bool address_matches_io(const context_t *context,
+                               const uint8_t address[ADDRESS_LENGTH],
                                io_data_t *io,
                                bool accept_eth) {
-    return address_partially_matches_io((const uint8_t *) address,
+    return address_partially_matches_io(context,
+                                        (const uint8_t *) address,
                                         io,
                                         accept_eth,
                                         0,
@@ -232,26 +249,45 @@ static bool address_matches_intermediate(const uint8_t address[ADDRESS_LENGTH],
                                                   ADDRESS_LENGTH);
 }
 
-static int handle_address_reception(uint8_t address[ADDRESS_LENGTH],
+// Recipient bookkeeping helpers, defined next to handle_recipient below
+static int commit_leg_recipient(context_t *context, bool must_match);
+static void drop_leg_recipient(context_t *context);
+
+static int handle_address_reception(context_t *context,
+                                    uint8_t address[ADDRESS_LENGTH],
                                     io_data_t *this_io,
                                     io_data_t *opposite_io,
                                     intermediate_data_t *intermediate,
                                     io_type_t address_direction) {
     PRINTF("Handling reception of the %s address of a swap pair\n", IO_NAME(address_direction));
-    if (address_matches_io(address, this_io, true)) {
+    if (address_matches_io(context, address, this_io, true)) {
         PRINTF("Same %s as previously, add amount to existing pool\n", IO_NAME(address_direction));
         if (add_parameters(this_io->amount, this_io->tmp_amount) != 0) {
             PRINTF("Error, overflow while adding amounts\n");
             return -1;
         }
+        // A split leg extending the displayed output: recipients must agree
+        if (address_direction == OUTPUT && commit_leg_recipient(context, true) != 0) {
+            return -1;
+        }
 
-    } else if (address_matches_io(address, opposite_io, false)) {
+    } else if (address_matches_io(context, address, opposite_io, false)) {
         PRINTF("This %s address extends the previously received %s\n",
                IO_NAME(address_direction),
                OPPOSITE_IO_NAME(address_direction));
         // Drop the saved IO, drop this received edge of the swap pair
         opposite_io->asset_type = UNSET;
         memset(opposite_io->amount, 0, INT256_LENGTH);
+        if (address_direction == INPUT) {
+            // This leg consumes the previous output: that output's recipient was
+            // internal plumbing (typically this leg's pool), not the user's
+            if (!context->recipient_sticky) {
+                context->recipient_set = false;
+            }
+        } else {
+            // This leg's output feeds a previously parsed input: plumbing
+            drop_leg_recipient(context);
+        }
 
     } else if (address_matches_intermediate(address, intermediate, address_direction)) {
         PRINTF("This %s address extends the previously received %s intermediate\n",
@@ -259,20 +295,33 @@ static int handle_address_reception(uint8_t address[ADDRESS_LENGTH],
                OPPOSITE_IO_NAME(address_direction));
         // Drop the saved IO intermediate, drop this received edge of the swap pair
         intermediate->intermediate_status = UNUSED;
+        if (address_direction == OUTPUT) {
+            // This leg's output cancelled against a dangling input edge: plumbing
+            drop_leg_recipient(context);
+        }
 
     } else if (this_io->asset_type == UNSET) {
         PRINTF("No %s set yet, save this address as it\n", IO_NAME(address_direction));
-        if (set_token(address, this_io) != 0) {
+        if (set_token(context, address, this_io) != 0) {
             PRINTF("Error in set_token\n");
             return -1;
         }
         memmove(this_io->amount, this_io->tmp_amount, PARAMETER_LENGTH);
+        // A fresh output: this leg's recipient is the displayed one
+        if (address_direction == OUTPUT && commit_leg_recipient(context, false) != 0) {
+            return -1;
+        }
 
     } else if (intermediate->intermediate_status == UNUSED) {
         PRINTF("This %s address did not match anything, treat it as the edge of a split swap\n",
                IO_NAME(address_direction));
         intermediate->intermediate_status = (intermediate_status_t) address_direction;
         memmove(intermediate->address, address, ADDRESS_LENGTH);
+        if (address_direction == OUTPUT) {
+            // A dangling output edge either gets consumed later (plumbing) or
+            // fails finalize; either way its recipient is never displayed
+            drop_leg_recipient(context);
+        }
 
     } else {
         PRINTF(
@@ -294,7 +343,8 @@ static int parse_v2_path(context_t *context,
         PRINTF("Handling token IN\n");
         uint8_t address[ADDRESS_LENGTH];
         memmove(address, parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      &context->input,
                                      &context->output,
                                      &context->intermediate,
@@ -313,7 +363,8 @@ static int parse_v2_path(context_t *context,
         PRINTF("Handling token OUT\n");
         uint8_t address[ADDRESS_LENGTH];
         memmove(address, parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      &context->output,
                                      &context->input,
                                      &context->intermediate,
@@ -359,7 +410,8 @@ static int parse_v3_path(context_t *context,
         memmove(address, parameter, ADDRESS_LENGTH);
         context->current_path_read += ADDRESS_LENGTH;
         current_read_this_cycle += ADDRESS_LENGTH;
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      first_token_to_read,
                                      last_token_to_read,
                                      &context->intermediate,
@@ -413,7 +465,8 @@ static int parse_v3_path(context_t *context,
             PRINTF("Intermediate buffer is not free: match or fail\n");
             bool unused = (context->intermediate.split_reception_status == SPLIT_RECEPTION_UNUSED);
             if (unused || context->intermediate.split_reception_status & MATCHING_OWN_IO) {
-                if (address_partially_matches_io(parameter + current_read_this_cycle,
+                if (address_partially_matches_io(context,
+                                                 parameter + current_read_this_cycle,
                                                  last_token_to_read,
                                                  true,
                                                  offset_in_address,
@@ -425,7 +478,8 @@ static int parse_v3_path(context_t *context,
                 }
             }
             if (unused || context->intermediate.split_reception_status & MATCHING_OPPOSING_IO) {
-                if (address_partially_matches_io(parameter + current_read_this_cycle,
+                if (address_partially_matches_io(context,
+                                                 parameter + current_read_this_cycle,
                                                  first_token_to_read,
                                                  false,
                                                  offset_in_address,
@@ -468,7 +522,8 @@ static int parse_v3_path(context_t *context,
             uint8_t address[ADDRESS_LENGTH];
             memmove(address, context->intermediate.address, ADDRESS_LENGTH);
             context->intermediate.intermediate_status = UNUSED;
-            if (handle_address_reception(address,
+            if (handle_address_reception(context,
+                                         address,
                                          last_token_to_read,
                                          first_token_to_read,
                                          &context->intermediate,
@@ -485,13 +540,26 @@ static int parse_v3_path(context_t *context,
                     PRINTF("Error, overflow while adding amounts\n");
                     return -1;
                 }
+                if (last_direction == OUTPUT && commit_leg_recipient(context, true) != 0) {
+                    return -1;
+                }
             } else if (context->intermediate.split_reception_status & MATCHING_OPPOSING_IO) {
                 // Drop the saved IO, drop this received edge of the swap pair
                 first_token_to_read->asset_type = UNSET;
                 memset(first_token_to_read->amount, 0, INT256_LENGTH);
+                if (last_direction == INPUT) {
+                    if (!context->recipient_sticky) {
+                        context->recipient_set = false;
+                    }
+                } else {
+                    drop_leg_recipient(context);
+                }
             } else if (context->intermediate.split_reception_status & MATCHING_INTERMEDIATE) {
                 // Drop the saved IO intermediate, drop this received edge of the swap pair
                 context->intermediate.intermediate_status = UNUSED;
+                if (last_direction == OUTPUT) {
+                    drop_leg_recipient(context);
+                }
             } else {
                 // Unreachable per construct
                 return -1;
@@ -534,7 +602,45 @@ static int handle_recipient(const uint8_t parameter[PARAMETER_LENGTH], context_t
                 parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                 ADDRESS_LENGTH);
     }
+    // Wrap / unwrap / sweep recipients are user-facing transfers: a later swap
+    // leg may not silently replace them.
+    context->recipient_sticky = true;
     return 0;
+}
+
+// Stash the recipient of the swap leg being parsed; committed when its output resolves.
+static void stash_leg_recipient(context_t *context, const uint8_t parameter[PARAMETER_LENGTH]) {
+    context->leg_recipient_set = true;
+    memmove(context->leg_recipient,
+            parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            ADDRESS_LENGTH);
+}
+
+// The parsed leg's output resolved as (part of) the swap output: its recipient
+// becomes the displayed recipient. 'must_match' is set when the leg extends an
+// output that already has a recipient (split legs must agree). A sticky
+// recipient (wrap / unwrap / sweep) always requires a match.
+static int commit_leg_recipient(context_t *context, bool must_match) {
+    if (!context->leg_recipient_set) {
+        return 0;
+    }
+    if ((must_match || context->recipient_sticky) && context->recipient_set &&
+        memcmp(context->recipient, context->leg_recipient, ADDRESS_LENGTH) != 0) {
+        PRINTF("Error: can't mix different recipients\n");
+        PRINTF("Received: %.*H\n", ADDRESS_LENGTH, context->leg_recipient);
+        PRINTF("Expected: %.*H\n", ADDRESS_LENGTH, context->recipient);
+        return -1;
+    }
+    context->recipient_set = true;
+    memmove(context->recipient, context->leg_recipient, ADDRESS_LENGTH);
+    context->leg_recipient_set = false;
+    return 0;
+}
+
+// The leg's output turned out to be internal plumbing (consumed / cancelled):
+// its recipient is dropped without being displayed.
+static void drop_leg_recipient(context_t *context) {
+    context->leg_recipient_set = false;
 }
 
 // Size of the network fees element in a V3 path
@@ -674,6 +780,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     memmove(context->recipient,
                             msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                             ADDRESS_LENGTH);
+                    context->recipient_sticky = true;
                 }
             }
             context->next_param = INPUT_UNWRAP_WETH_AMOUNT;
@@ -766,10 +873,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_IN_RECIPIENT:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_IN_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V2_SWAP_EXACT_IN_AMOUNT_IN:
@@ -832,10 +936,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V2_SWAP_EXACT_OUT_RECIPIENT:
             PRINTF("Interpreting as INPUT_V2_SWAP_EXACT_OUT_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V2_SWAP_EXACT_OUT_AMOUNT_OUT:
@@ -898,10 +999,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_IN_RECIPIENT:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_IN_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN;
             break;
         case INPUT_V3_SWAP_EXACT_IN_AMOUNT_IN:
@@ -963,10 +1061,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             break;
         case INPUT_V3_SWAP_EXACT_OUT_RECIPIENT:
             PRINTF("Interpreting as INPUT_V3_SWAP_EXACT_OUT_RECIPIENT\n");
-            if (handle_recipient(msg->parameter, context) != 0) {
-                PRINTF("Error: handle_recipient failed\n");
-                msg->result = ETH_PLUGIN_RESULT_ERROR;
-            }
+            stash_leg_recipient(context, msg->parameter);
             context->next_param = INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT;
             break;
         case INPUT_V3_SWAP_EXACT_OUT_AMOUNT_OUT:
@@ -1029,7 +1124,8 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 PRINTF("Sweeping input ETH\n");
                 context->skip_sweep_once = true;
                 context->unwrap_sweep_received = true;
-            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            } else if (address_matches_io(context,
+                                          msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           &context->input,
                                           false)) {
                 PRINTF("Sweeping input token\n");
@@ -1037,7 +1133,8 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             } else if (context->output.asset_type == ETH &&
                        allzeroes(msg->parameter, PARAMETER_LENGTH)) {
                 PRINTF("Sweeping output ETH\n");
-            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            } else if (address_matches_io(context,
+                                          msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           &context->output,
                                           false)) {
                 PRINTF("Sweeping output token\n");
@@ -1055,6 +1152,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     PRINTF("Received a sweep but the swap recipient was not the router\n");
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
                 } else {
+                    context->recipient_sticky = true;
                     memmove(context->recipient,
                             msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                             ADDRESS_LENGTH);

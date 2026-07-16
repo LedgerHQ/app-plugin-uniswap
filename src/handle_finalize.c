@@ -16,17 +16,21 @@ static bool superior(const uint8_t a[PARAMETER_LENGTH], const uint8_t b[PARAMETE
     } while (0);
 
 // Resolve token if possible, request otherwise
-static bool resolve_asset(io_data_t *io_data) {
+static bool resolve_asset(const context_t *context, io_data_t *io_data) {
     if (io_data->asset_type == ETH) {
-        PRINTF("Finalizing IO with asset ETH\n");
+        PRINTF("Finalizing IO with asset %s\n", native_ticker(context));
         io_data->u.token_info.decimals = WEI_TO_ETHER;
-        strlcpy(io_data->u.token_info.ticker, "ETH", sizeof(io_data->u.token_info.ticker));
+        strlcpy(io_data->u.token_info.ticker,
+                native_ticker(context),
+                sizeof(io_data->u.token_info.ticker));
         return true;
 
     } else if (io_data->asset_type == WETH) {
-        PRINTF("Finalizing IO with asset WETH\n");
+        PRINTF("Finalizing IO with asset %s\n", wrapped_native_ticker(context));
         io_data->u.token_info.decimals = WETH_DECIMALS;
-        strlcpy(io_data->u.token_info.ticker, WETH_TICKER, sizeof(io_data->u.token_info.ticker));
+        strlcpy(io_data->u.token_info.ticker,
+                wrapped_native_ticker(context),
+                sizeof(io_data->u.token_info.ticker));
         // Handle it like a token from now on
         io_data->asset_type = KNOWN_TOKEN;
         return true;
@@ -145,11 +149,11 @@ void handle_finalize(ethPluginFinalize_t *msg) {
     }
 
     // Resolve IOs if possible, request otherwise
-    if (!resolve_asset(&context->input)) {
+    if (!resolve_asset(context, &context->input)) {
         msg->tokenLookup1 = context->input.u.address;
     }
 
-    if (!resolve_asset(&context->output)) {
+    if (!resolve_asset(context, &context->output)) {
         msg->tokenLookup2 = context->output.u.address;
     }
 }

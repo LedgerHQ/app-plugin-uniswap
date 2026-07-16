@@ -206,8 +206,9 @@ typedef enum swap_type_e {
     EXACT_OUT,
 } swap_type_t;
 
-// Arbitrary number, I have not seen an example of a TX using more than 8 commands
-#define MAX_COMMANDS_HANDLED 8
+// Sized from production routing data: multi-protocol split routes have been
+// observed using up to 12 commands.
+#define MAX_COMMANDS_HANDLED 16
 
 typedef struct context_s {
     // Set to be the next param we expect to parse.
@@ -256,11 +257,25 @@ typedef struct context_s {
     uint8_t sweep_amount[INT256_LENGTH];
 
     bool recipient_set;
+    // Set when the recipient was fixed by a wrap / unwrap / sweep command: it is
+    // user-facing and a later swap leg may not silently replace it.
+    bool recipient_sticky;
     uint8_t recipient[ADDRESS_LENGTH];
+
+    // Recipient of the swap leg currently being parsed. Only committed as the
+    // displayed recipient once the leg's output is resolved: legs whose output is
+    // consumed by a later leg are internal plumbing (their recipient is a pool or
+    // the router) and must not conflict with the user-facing recipient.
+    bool leg_recipient_set;
+    uint8_t leg_recipient[ADDRESS_LENGTH];
 
     intermediate_data_t intermediate;
 
     uint8_t own_address[ADDRESS_LENGTH];
+
+    // Index + 1 into the per-chain wrapped-native table (see weth_token.c), selected from the
+    // transaction's chain ID at init. 0 means the chain has no known wrapped-native token.
+    uint8_t wrapped_native_idx;
 
     selector_t selectorIndex;
 } context_t;
