@@ -807,8 +807,7 @@ static int handle_v4_currency(context_t *context,
         // dangles exactly like the wrapped side of the same funds.
         const uint8_t *wrapped = wrapped_native_address(context);
         if (wrapped == NULL) {
-            PRINTF("Error: native currency conflicts with existing %s token\n",
-                   IO_NAME(direction));
+            PRINTF("Error: native currency conflicts with existing %s token\n", IO_NAME(direction));
             return -1;
         }
         memmove(address, wrapped, ADDRESS_LENGTH);
@@ -867,8 +866,7 @@ static bool wrap_unwrap_is_plumbing(const context_t *context) {
 // names an ETH output; the io matcher handles ERC20s (an ETH / WETH typed
 // output is deliberately not matched by its wrapped address here: a take of
 // the wrapped ERC20 is a different flow than a native take).
-static bool v4_take_names_output(context_t *context,
-                                 const uint8_t currency[ADDRESS_LENGTH]) {
+static bool v4_take_names_output(context_t *context, const uint8_t currency[ADDRESS_LENGTH]) {
     bool is_native = true;
     for (uint8_t i = 0; i < ADDRESS_LENGTH; ++i) {
         if (currency[i] != 0) {
@@ -889,12 +887,9 @@ static bool v4_take_names_output(context_t *context,
 // routes an intermediate onward — typically straight to the next leg's pool —
 // so it is stashed like a V2 / V3 leg recipient and discarded when a later leg
 // consumes that currency.
-static int apply_v4_take_recipient(context_t *context,
-                                   const uint8_t parameter[PARAMETER_LENGTH]) {
+static int apply_v4_take_recipient(context_t *context, const uint8_t parameter[PARAMETER_LENGTH]) {
     if (v4_take_names_output(context, context->v4_first_currency)) {
-        return reconcile_recipient(context,
-                                   parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                                   true);
+        return reconcile_recipient(context, parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), true);
     }
     PRINTF("V4 take of a non-output currency: chaining plumbing\n");
     stash_leg_recipient(context, parameter);
@@ -1607,9 +1602,7 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             if (context->v4_leg_exact_in) {
                 if (allzeroes(msg->parameter, PARAMETER_LENGTH) && context->v4_settle_pending) {
                     // OPEN_DELTA swap: the input amount was carried by its SETTLE
-                    memmove(context->input.tmp_amount,
-                            context->v4_settle_amount,
-                            PARAMETER_LENGTH);
+                    memmove(context->input.tmp_amount, context->v4_settle_amount, PARAMETER_LENGTH);
                 } else {
                     memmove(context->input.tmp_amount, msg->parameter, PARAMETER_LENGTH);
                 }
@@ -1667,13 +1660,9 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                     ? (context->v4_pathkey_index + 1 == context->v4_pathkey_count)
                     : (context->v4_pathkey_index == 0)) {
                 uint8_t addr[ADDRESS_LENGTH];
-                memmove(addr,
-                        msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
-                        ADDRESS_LENGTH);
-                io_data_t *this_io =
-                    context->v4_leg_exact_in ? &context->output : &context->input;
-                io_data_t *opp_io =
-                    context->v4_leg_exact_in ? &context->input : &context->output;
+                memmove(addr, msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
+                io_data_t *this_io = context->v4_leg_exact_in ? &context->output : &context->input;
+                io_data_t *opp_io = context->v4_leg_exact_in ? &context->input : &context->output;
                 io_type_t dir = context->v4_leg_exact_in ? OUTPUT : INPUT;
                 if (handle_v4_currency(context, addr, this_io, opp_io, dir) != 0) {
                     msg->result = ETH_PLUGIN_RESULT_ERROR;
