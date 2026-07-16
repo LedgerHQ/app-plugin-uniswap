@@ -262,6 +262,10 @@ typedef struct context_s {
 
     uint8_t own_address[ADDRESS_LENGTH];
 
+    // Index + 1 into the per-chain wrapped-native table (see weth_token.c), selected from the
+    // transaction's chain ID at init. 0 means the chain has no known wrapped-native token.
+    uint8_t wrapped_native_idx;
+
     selector_t selectorIndex;
 } context_t;
 

@@ -17,10 +17,11 @@ PLUGIN_NAME = get_appname_from_makefile()
 UNISWAP_SELECTOR = bytes.fromhex("3593564c")
 
 class UniswapClient:
-    def __init__(self, backend, uniswap_contract_data):
+    def __init__(self, backend, uniswap_contract_data, chain_id=ChainId.ETH):
         self.client = EthAppClient(backend)
         self.backend = backend
         self.uniswap_contract_data = uniswap_contract_data
+        self.chain_id = chain_id
 
     def set_external_plugin(self):
         self.client.set_external_plugin(PLUGIN_NAME,
@@ -48,8 +49,7 @@ class UniswapClient:
                 "gas": 173290,
                 "to": self.uniswap_contract_data.address,
                 "value": amount,
-                # TODO: check ?
-                "chainId": ChainId.ETH,
+                "chainId": self.chain_id,
                 "data": data
              },
         ):

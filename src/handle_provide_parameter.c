@@ -130,6 +130,13 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
         io_data = &context->input;
     }
 
+    // Without wrapped-native knowledge for this chain we cannot merge the wrap / unwrap
+    // with its swap leg. Refuse rather than risk a wrong display.
+    if (!has_wrapped_native(context)) {
+        PRINTF("Error: no wrapped native token known for this chain\n");
+        return -1;
+    }
+
     PRINTF("io_data->asset_type %d\n", io_data->asset_type);
     if (io_data->asset_type == UNSET) {
         // Nothing received yet, we indicate we received data and set it's type as ETH
@@ -157,9 +164,11 @@ static int add_wrap_or_unwrap(const uint8_t parameter[PARAMETER_LENGTH],
 }
 
 // Set the type of input or output token. Handle it the same way thanks to the io_data_t structure.
-static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) {
+static int set_token(const context_t *context,
+                     const uint8_t address[ADDRESS_LENGTH],
+                     io_data_t *io_data) {
     PRINTF("Setting token\n");
-    if (token_is_weth(address)) {
+    if (token_is_weth(context, address)) {
         PRINTF("Token to set is WETH\n");
         io_data->asset_type = WETH;
     } else {
@@ -171,7 +180,8 @@ static int set_token(const uint8_t address[ADDRESS_LENGTH], io_data_t *io_data) 
     return 0;
 }
 
-static bool address_partially_matches_io(const uint8_t *address,
+static bool address_partially_matches_io(const context_t *context,
+                                         const uint8_t *address,
                                          io_data_t *io,
                                          bool accept_eth,
                                          uint8_t offset,
@@ -183,23 +193,29 @@ static bool address_partially_matches_io(const uint8_t *address,
         return false;
     }
 
-    const uint8_t (*ref)[ADDRESS_LENGTH];
+    const uint8_t *ref;
     if (io->asset_type == WETH || io->asset_type == ETH) {
         PRINTF("Comparing with WETH\n");
-        ref = &weth_address;
+        ref = wrapped_native_address(context);
+        if (ref == NULL) {
+            // No wrapped-native knowledge for this chain: nothing can match ETH / WETH
+            return false;
+        }
     } else {
         PRINTF("Comparing with saved token\n");
-        ref = &io->u.address;
+        ref = io->u.address;
     }
     PRINTF("Trying to match : %.*H\n", length, address);
-    PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, *ref, offset);
-    return (memcmp(*ref + offset, address, length) == 0);
+    PRINTF("Inside ref : %.*H at offset %d\n", ADDRESS_LENGTH, ref, offset);
+    return (memcmp(ref + offset, address, length) == 0);
 }
 
-static bool address_matches_io(const uint8_t address[ADDRESS_LENGTH],
+static bool address_matches_io(const context_t *context,
+                               const uint8_t address[ADDRESS_LENGTH],
                                io_data_t *io,
                                bool accept_eth) {
-    return address_partially_matches_io((const uint8_t *) address,
+    return address_partially_matches_io(context,
+                                        (const uint8_t *) address,
                                         io,
                                         accept_eth,
                                         0,
@@ -232,20 +248,21 @@ static bool address_matches_intermediate(const uint8_t address[ADDRESS_LENGTH],
                                                   ADDRESS_LENGTH);
 }
 
-static int handle_address_reception(uint8_t address[ADDRESS_LENGTH],
+static int handle_address_reception(const context_t *context,
+                                    uint8_t address[ADDRESS_LENGTH],
                                     io_data_t *this_io,
                                     io_data_t *opposite_io,
                                     intermediate_data_t *intermediate,
                                     io_type_t address_direction) {
     PRINTF("Handling reception of the %s address of a swap pair\n", IO_NAME(address_direction));
-    if (address_matches_io(address, this_io, true)) {
+    if (address_matches_io(context, address, this_io, true)) {
         PRINTF("Same %s as previously, add amount to existing pool\n", IO_NAME(address_direction));
         if (add_parameters(this_io->amount, this_io->tmp_amount) != 0) {
             PRINTF("Error, overflow while adding amounts\n");
             return -1;
         }
 
-    } else if (address_matches_io(address, opposite_io, false)) {
+    } else if (address_matches_io(context, address, opposite_io, false)) {
         PRINTF("This %s address extends the previously received %s\n",
                IO_NAME(address_direction),
                OPPOSITE_IO_NAME(address_direction));
@@ -262,7 +279,7 @@ static int handle_address_reception(uint8_t address[ADDRESS_LENGTH],
 
     } else if (this_io->asset_type == UNSET) {
         PRINTF("No %s set yet, save this address as it\n", IO_NAME(address_direction));
-        if (set_token(address, this_io) != 0) {
+        if (set_token(context, address, this_io) != 0) {
             PRINTF("Error in set_token\n");
             return -1;
         }
@@ -294,7 +311,8 @@ static int parse_v2_path(context_t *context,
         PRINTF("Handling token IN\n");
         uint8_t address[ADDRESS_LENGTH];
         memmove(address, parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      &context->input,
                                      &context->output,
                                      &context->intermediate,
@@ -313,7 +331,8 @@ static int parse_v2_path(context_t *context,
         PRINTF("Handling token OUT\n");
         uint8_t address[ADDRESS_LENGTH];
         memmove(address, parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH), ADDRESS_LENGTH);
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      &context->output,
                                      &context->input,
                                      &context->intermediate,
@@ -359,7 +378,8 @@ static int parse_v3_path(context_t *context,
         memmove(address, parameter, ADDRESS_LENGTH);
         context->current_path_read += ADDRESS_LENGTH;
         current_read_this_cycle += ADDRESS_LENGTH;
-        if (handle_address_reception(address,
+        if (handle_address_reception(context,
+                                     address,
                                      first_token_to_read,
                                      last_token_to_read,
                                      &context->intermediate,
@@ -413,7 +433,8 @@ static int parse_v3_path(context_t *context,
             PRINTF("Intermediate buffer is not free: match or fail\n");
             bool unused = (context->intermediate.split_reception_status == SPLIT_RECEPTION_UNUSED);
             if (unused || context->intermediate.split_reception_status & MATCHING_OWN_IO) {
-                if (address_partially_matches_io(parameter + current_read_this_cycle,
+                if (address_partially_matches_io(context,
+                                                 parameter + current_read_this_cycle,
                                                  last_token_to_read,
                                                  true,
                                                  offset_in_address,
@@ -425,7 +446,8 @@ static int parse_v3_path(context_t *context,
                 }
             }
             if (unused || context->intermediate.split_reception_status & MATCHING_OPPOSING_IO) {
-                if (address_partially_matches_io(parameter + current_read_this_cycle,
+                if (address_partially_matches_io(context,
+                                                 parameter + current_read_this_cycle,
                                                  first_token_to_read,
                                                  false,
                                                  offset_in_address,
@@ -468,7 +490,8 @@ static int parse_v3_path(context_t *context,
             uint8_t address[ADDRESS_LENGTH];
             memmove(address, context->intermediate.address, ADDRESS_LENGTH);
             context->intermediate.intermediate_status = UNUSED;
-            if (handle_address_reception(address,
+            if (handle_address_reception(context,
+                                         address,
                                          last_token_to_read,
                                          first_token_to_read,
                                          &context->intermediate,
@@ -1029,7 +1052,8 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
                 PRINTF("Sweeping input ETH\n");
                 context->skip_sweep_once = true;
                 context->unwrap_sweep_received = true;
-            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            } else if (address_matches_io(context,
+                                          msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           &context->input,
                                           false)) {
                 PRINTF("Sweeping input token\n");
@@ -1037,7 +1061,8 @@ static void handle_execute(ethPluginProvideParameter_t *msg, context_t *context)
             } else if (context->output.asset_type == ETH &&
                        allzeroes(msg->parameter, PARAMETER_LENGTH)) {
                 PRINTF("Sweeping output ETH\n");
-            } else if (address_matches_io(msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
+            } else if (address_matches_io(context,
+                                          msg->parameter + (PARAMETER_LENGTH - ADDRESS_LENGTH),
                                           &context->output,
                                           false)) {
                 PRINTF("Sweeping output token\n");
