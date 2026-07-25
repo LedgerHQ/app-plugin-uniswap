@@ -1,7 +1,8 @@
 #ifdef DEBUG
 
-#include "plugin.h"
 #include "debug.h"
+
+#include "plugin.h"
 
 void print_parameter_name(parameter_t parameter) {
     switch (parameter) {
